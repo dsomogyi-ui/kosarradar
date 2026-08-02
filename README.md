@@ -1,28 +1,27 @@
-# KosárRadar Alpha 0.1
+# KosárRadar Live Alpha 0.2 – Perwoll
 
-Működő Next.js prototípus termékkeresővel, kosárral, boltválasztással és utazási költséget figyelembe vevő számítással.
+Ez a verzió szerveroldalon megpróbálja lekérni a Perwoll aktuális online árát az Auchan, dm és Rossmann termékoldalairól.
 
-## Feltöltés GitHubra böngészőből
+## Frissítés GitHubon böngészőből
 
-1. Nyisd meg a saját `kosarradar` repositorydat.
-2. Kattints az **Add file → Upload files** lehetőségre.
-3. Csomagold ki a ZIP-et.
-4. Húzd be a kicsomagolt mappa teljes tartalmát a GitHub feltöltőmezőjébe.
-5. Kattints a **Commit changes** gombra.
+A legegyszerűbb, ha a repository jelenlegi fájljait lecseréled a ZIP tartalmára:
 
-## Publikálás Vercelen
+1. Csomagold ki a ZIP-et.
+2. GitHubon töltsd fel az új fájlokat azonos elérési úttal.
+3. Az `app/page.tsx` és `app/globals.css` fájlok felülíródnak.
+4. Új fájl: `app/api/perwoll/route.ts`.
+5. Commit után a Vercel automatikusan új deploymentet indít.
 
-1. Jelentkezz be a Vercelbe GitHubbal.
-2. Kattints az **Add New → Project** gombra.
-3. Válaszd ki a `kosarradar` repositoryt.
-4. A Vercel automatikusan felismeri a Next.js projektet.
-5. Kattints a **Deploy** gombra.
+## Működés
 
-## Helyi futtatás
+- `/api/perwoll` lekéri a három forrásoldalt.
+- Több tipikus HTML/JSON-LD árformátumot felismer.
+- Az eredményt 30 percig gyorsítótárazza.
+- Minden találat mellett megmarad a közvetlen termékoldal linkje.
 
-```bash
-npm install
-npm run dev
-```
+## Korlátok
 
-A megjelenített árak tesztadatok.
+- A boltok módosíthatják az oldalaik szerkezetét, ekkor az árkinyerést frissíteni kell.
+- Egyes oldalak automatizált kéréseket korlátozhatnak.
+- Az online ár eltérhet a konkrét áruház polcárától és hűségkártyás árától.
+- A dm termék jelenleg 4 l / 80 mosás, ezért nem azonos kiszerelés a 3,75 l / 75 mosásos ajánlatokkal.
