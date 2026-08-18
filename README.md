@@ -1,5 +1,7 @@
-# KosárRadar Alpha 0.3
+# KosárRadar Alpha 0.3.1
 
-Open Food Facts alapú termékkereső + bevásárlólista. Az ármodul szándékosan külön marad.
-
-A ZIP tartalmát töltsd fel a GitHub repository gyökerébe, a meglévő fájlok felülírásával. A Vercel automatikusan deployolja.
+Javítások:
+- Cappy, Perwoll, Somat, Meridol és Venus biztosan kereshető a KosárRadar Product Masterből.
+- Az Open Food Facts továbbra is kibővíti a találatokat.
+- Ha az Open Food Facts nem válaszol, a kereső nem marad teljesen üres.
+- Az árforrás továbbra is külön modul lesz.
