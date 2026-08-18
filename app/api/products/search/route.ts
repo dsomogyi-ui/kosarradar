@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchMaster } from "../../../../../data/product-master";
+import { searchMaster } from "../../../../data/product-master";
 
 type Product = {
   code: string;
@@ -11,7 +11,6 @@ type Product = {
 };
 
 async function searchOpenFoodFacts(q: string): Promise<Product[]> {
-  // Open Food Facts docs: full-text search is supported by the v1 search API.
   const url = new URL("https://world.openfoodfacts.org/cgi/search.pl");
   url.searchParams.set("search_terms", q);
   url.searchParams.set("search_simple", "1");
@@ -26,9 +25,11 @@ async function searchOpenFoodFacts(q: string): Promise<Product[]> {
     },
     next: { revalidate: 3600 }
   });
+
   if (!r.ok) throw new Error(`OFF ${r.status}`);
 
   const data = await r.json();
+
   return (data.products || [])
     .filter((p: any) => p?.code && p?.product_name)
     .map((p: any) => ({
@@ -43,7 +44,7 @@ async function searchOpenFoodFacts(q: string): Promise<Product[]> {
 
 function dedupe(items: Product[]) {
   const seen = new Set<string>();
-  return items.filter(p => {
+  return items.filter((p) => {
     const key = p.code || `${p.product_name}|${p.brands}|${p.quantity}`;
     if (seen.has(key)) return false;
     seen.add(key);
