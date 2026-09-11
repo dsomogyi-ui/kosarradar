@@ -4,7 +4,7 @@ Kategóriákból összeállítható bevásárlólista, konkrét üzletek árai �
 
 ## Újdonságok
 
-- Kizárólag Auchan, Tesco, Lidl, Aldi: üzletlista, név/vonalkód keresés és kategóriás terméklista is szűrt; más lánc üzletét a szerver visszautasítja.
+- Kizárólag Auchan és Tesco: üzletlista, név/vonalkód keresés és kategóriás terméklista is szűrt; más lánc üzletét a szerver visszautasítja.
 - Élő GVH kategóriafa: főcsoport → alcsoport → termékkategória. Megmaradt a név- és vonalkódkeresés.
 - Konkrét üzletek csillagozása, kedvencszűrő, kedvencek gyors kijelölése (legfeljebb 8 összehasonlított üzlet).
 - Fiókoldal: e-mailes regisztráció, belépés, megerősítés, jelszó-visszaállítás, névmódosítás, kijelentkezés. Google és Facebook OAuth integráció.
@@ -23,4 +23,4 @@ Ellenőrzés: `npm test`, `npm run typecheck`, `npm run build`.
 
 Árforrás: GVH Árfigyelő. Pontos termékazonosító és kiszerelés; hűségár csak a megjelölt láncnál; visszaváltási díj külön. Legfeljebb 24 tétel és 8 üzlet; az optimalizálás egy vagy két üzletet vizsgál. A kimért termékek még nem számolhatók. Hiányos vagy elavult ár nem ad teljes kosaras ajánlatot. Az ár megléte nem készletigazolás. Egyéni kuponok nincsenek levonva.
 
-A lapozás a GVH 20 soros forrásoldalait követi, a négy láncra szűrés után kevesebb találat maradhat egy oldalon. Az alkalmazás nem tünteti fel az összes lánc összesített találatszámát sajátjaként.
+A lapozás a GVH 20 soros forrásoldalait követi, a két láncra szűrés után kevesebb találat maradhat egy oldalon. Az alkalmazás nem tünteti fel az összes lánc összesített találatszámát sajátjaként.

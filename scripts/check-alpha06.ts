@@ -5,7 +5,7 @@ import {getCategories,isLeaf} from '../lib/catalogue.ts';
 import {GET as browse} from '../app/api/products/category/route.ts';
 import {compare} from '../lib/compare.ts';
 const [shops,categories]=await Promise.all([getShops(),getCategories()]);
-assert.equal(shops.chains.length,4);assert.deepEqual(shops.chains.map(c=>c.name).sort(),['Aldi','Auchan','Lidl','Tesco']);
+assert.equal(shops.chains.length,2);assert.deepEqual(shops.chains.map(c=>c.name).sort(),['Auchan','Tesco']);
 assert.equal(isLeaf(categories.categories,62),true);
 const r=await browse(new Request('https://test.local/api/products/category?id=62'));
 assert.equal(r.status,200);const apple=await r.json();assert.ok(apple.products.length>0);

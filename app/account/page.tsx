@@ -40,6 +40,6 @@ export default function Account(){
     </form><div className="account-actions">{mode==='login'?<><button disabled={working} onClick={()=>switchMode('signup')}>Még nincs fiókom</button><button disabled={working} onClick={()=>switchMode('reset')}>Elfelejtett jelszó</button></>:<button disabled={working} onClick={()=>switchMode('login')}>Vissza a belépéshez</button>}</div>
    </>}
    <p className="hint"><a href="/">Folytatás a bevásárlólistához →</a></p>
-  </section><footer>KosárRadar · Alpha 0.6 · Auchan, Tesco, Lidl, Aldi</footer>
+  </section><footer>KosárRadar · Alpha 0.6 · Auchan és Tesco</footer>
  </main>;
 }

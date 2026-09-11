@@ -1,5 +1,6 @@
 'use client';
 import {createContext,useContext,useEffect,useRef,useState,useCallback,type ReactNode} from 'react';
+import {allowedFavoriteId} from '../lib/retailers';
 import {createBrowserClient} from '@supabase/ssr';
 import type {SupabaseClient} from '@supabase/supabase-js';
 type User={id:string;email:string;displayName:string;favoriteShopIds:string[]};
@@ -10,7 +11,7 @@ const GUEST='kosarradar:guest-favorites:v1';
 export function AccountProvider({children}:{children:ReactNode}){
  const [client,setClient]=useState<SupabaseClient|null>(null),[config,setConfig]=useState<Config|null>(null),[user,setUser]=useState<User|null>(null),[favorites,setFavorites]=useState<string[]>([]),[busy,setBusy]=useState(true),[error,setError]=useState('');
  const generation=useRef(0),saving=useRef(false);
- const guest=()=>{try{const d=JSON.parse(localStorage.getItem(GUEST)||'[]');return Array.isArray(d)?d.filter((x:unknown)=>typeof x==='string'&&/^[a-zA-Z0-9_-]{1,64}$/.test(x)).slice(0,50):[];}catch{return [];}};
+ const guest=()=>{try{const d=JSON.parse(localStorage.getItem(GUEST)||'[]');return Array.isArray(d)?d.filter(allowedFavoriteId).slice(0,50):[];}catch{return [];}};
  const refresh=useCallback(async()=>{const token=++generation.current;setBusy(true);setUser(null);setFavorites([]);setError('');
   try{const r=await fetch('/api/account',{cache:'no-store'});const d=await r.json();if(token!==generation.current)return;
    if(r.status===401){setFavorites(guest());return;}if(!r.ok)throw Error(d.error||'A fiók nem tölthető be.');setUser(d.user);setFavorites(d.user.favoriteShopIds);

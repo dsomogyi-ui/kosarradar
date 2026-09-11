@@ -104,7 +104,7 @@ export default function Home() {
     <div className="workspace">
       <section className="card catalogue" aria-labelledby="search-title">
         <div className="section-title"><span className="step">1</span><h2 id="search-title">Mi kerüljön a kosárba?</h2></div>
-        <p className="hint">Válassz kategóriát, majd egy pontos kiszerelést. Auchan · Tesco · Lidl · Aldi</p>
+        <p className="hint">Válassz kategóriát, majd egy pontos kiszerelést. Auchan · Tesco</p>
         <CategoryMenu selected={category} onSelect={(id,name)=>{setCategory(id);setCategoryName(name);setQ('');setOffset(0);}}/>
         <label className="search-label" htmlFor="search">Termék neve vagy vonalkódja</label>
         <input id="search" type="search" maxLength={100} value={q} onChange={e => { setQ(e.target.value); setCategory(null); setOffset(0); }} placeholder="Termék vagy vonalkód, pl. Perwoll" autoComplete="off"/>
@@ -114,7 +114,7 @@ export default function Home() {
         {loading && <p className="empty" role="status">Termékek keresése…</p>}
         {searchError && <div className="error" role="alert">{searchError} <button onClick={() => setRetrySearch(n => n + 1)}>Újrapróbálom</button></div>}
         {searchStale && <p className="warning">A terméklista korábbi lekérésből származik. Az árakat külön ellenőrizzük.</p>}
-        {!loading && !searchError && (category||q.trim().length >= 3) && !results.length && <p className="empty">{hasMore?'Ezen az oldalon nincs termék a négy kiválasztott lánctól. Lapozz tovább.':'Nincs további találat a négy lánc kínálatában. Válassz másik kategóriát vagy keresőkifejezést.'}</p>}
+        {!loading && !searchError && (category||q.trim().length >= 3) && !results.length && <p className="empty">{hasMore?'Ezen az oldalon nincs termék a két kiválasztott lánctól. Lapozz tovább.':'Nincs további találat a két lánc kínálatában. Válassz másik kategóriát vagy keresőkifejezést.'}</p>}
         {!!results.length && <div className="result-meta"><span>{results.length} termék ezen az oldalon</span><span>{Math.floor(offset/20)+1}. oldal</span></div>}
         <div className="product-list">{results.map(p => <article className="product" key={p.code}><div className="product-image">{p.imageUrl && <img src={p.imageUrl} alt="" loading="lazy" onError={e => { e.currentTarget.style.visibility = 'hidden'; }}/>}</div><div className="product-info"><strong>{p.name}</strong><span>{size(p)}</span><small>Azonosító: {p.code}</small>{p.bulk && <small>Kimért termék: ebben a verzióban még nem számolható.</small>}</div><button className="add" disabled={!p.priceable || !ready} aria-label={`${p.name} kosárba`} onClick={() => add(p)}>+<span> Kosárba</span></button></article>)}</div>
         {(offset > 0 || hasMore) && <nav className="pagination" aria-label="Találati oldalak"><button disabled={!offset || loading} onClick={() => setOffset(n => Math.max(0, n - 20))}>Előző</button><button disabled={!hasMore || loading} onClick={() => setOffset(n => n + 20)}>Következő</button></nav>}
@@ -128,7 +128,7 @@ export default function Home() {
     </div>
     <p className="sr-only" role="status" aria-live="polite">{notice}</p>
     <section className="card stores" id="stores" aria-labelledby="stores-title"><div className="section-title"><span className="step">2</span><h2 id="stores-title">Melyik üzletek jöhetnek szóba?</h2><span className="muted">{shopIds.length} / 8</span></div>
-      <p className="hint">Auchan, Tesco, Lidl és Aldi. Konkrét üzletek árait hasonlítjuk össze. Keress településre, irányítószámra vagy címre.</p>
+      <p className="hint">Auchan és Tesco. Konkrét üzletek árait hasonlítjuk össze. Keress településre, irányítószámra vagy címre.</p>
       {shopsLoading && <p role="status">Üzletek betöltése…</p>}
       {shopsError && <div className="error" role="alert">{shopsError} <button onClick={() => setRetryShops(n => n + 1)}>Újrapróbálom</button></div>}
       {shopsStale && <p className="warning">Korábban lekért üzletlista.</p>}
@@ -138,7 +138,7 @@ export default function Home() {
         {!!shopIds.length && <div className="selected-stores">{shopIds.map(id => { const s = labelShop(id); return <button className="chip" key={id} onClick={() => toggleShop(id)} aria-label={`${s?.name || id} ${s?.address || ''} eltávolítása`}>{s ? `${s.name} · ${s.city}, ${s.address}` : 'Már nem elérhető üzlet'} <span>×</span></button>; })}</div>}
         {(shopQuery.trim() || chainFilter || onlyFavorites) ? <><div className="store-list">{visibleShops.map(s => <div className={'store-option ' + (shopIds.includes(s.id) ? 'selected' : '')} key={s.id}><label className="store-choice"><input type="checkbox" checked={shopIds.includes(s.id)} disabled={!shopIds.includes(s.id) && shopIds.length >= 8} onChange={() => toggleShop(s.id)}/><span><strong>{s.name}</strong><span>{s.postalCode} {s.city}, {s.address}</span></span></label><button className="favorite-toggle" disabled={accountBusy} aria-pressed={favorites.includes(s.id)} aria-label={`${s.name}, ${s.address}: ${favorites.includes(s.id)?'eltávolítás a kedvencekből':'mentés a kedvencek közé'}`} onClick={()=>void saveFavorites(favorites.includes(s.id)?favorites.filter(id=>id!==s.id):[...favorites,s.id])}>{favorites.includes(s.id)?'★':'☆'}</button></div>)}</div>{!filteredShops.length && <p className="empty">Ezen a néven vagy címen nincs találat.</p>}{filteredShops.length > 40 && <p className="hint">Az első 40 üzlet látszik. Pontosítsd a települést vagy a címet.</p>}</> : <p className="store-prompt">Írd be, hol vásárolnál, majd jelöld ki az üzleteket.</p>}
       </>}
-      <p className="source-note">Ebben a prototípusban kizárólag az Auchan, Tesco, Lidl és Aldi üzletei választhatók.</p>
+      <p className="source-note">Ebben a prototípusban kizárólag az Auchan és Tesco üzletei választhatók.</p>
       {!!selectedShops.length && <div className="preferences"><fieldset><legend>Melyik láncnál van hűségkártyád?</legend><div className="loyalty">{selectedChains.map(c => <label key={c.id}><input type="checkbox" checked={loyalty.includes(c.id)} onChange={() => toggleLoyalty(c.id)}/>{c.name}</label>)}</div><p className="hint">Csak a megjelölt láncok általános hűségáraival számolunk. Egyéni kuponokat nem vonunk le.</p></fieldset><div><label htmlFor="extra-cost">Második megálló többletköltsége</label><div className="cost-input"><input id="extra-cost" type="number" min="0" max="100000" step="50" value={extraStopCost} onChange={e => { invalidate(); setExtraStopCost(Math.min(100000, Math.max(0, Number(e.target.value) || 0))); }}/><span>Ft</span></div><p className="hint">Saját becslés az extra útra és időre. A 0 Ft azt jelenti, hogy ezeket nem számoljuk.</p></div></div>}
     </section>
     {(priceLoading || compareError || comparison) && <section className="card comparison" aria-labelledby="compare-title"><div className="section-title"><span className="step">3</span><h2 id="compare-title">Így alakul a kosarad</h2></div>

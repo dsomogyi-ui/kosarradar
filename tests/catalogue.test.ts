@@ -13,10 +13,10 @@ test('nested categories preserve leaf identity and reject malformed trees',()=>{
 });
 test('catalogue excludes other chains without misrepresenting pagination',async()=>{
  const allowed={...fixture,pricesOfChainStores:[{id:RETAILERS[0].id}]};
- const excluded={...fixture,id:'spar-only',pricesOfChainStores:[{id:'excluded'}]};
+ const excluded={...fixture,id:'spar-only',pricesOfChainStores:[{id:'f95031d8-84a5-4edf-b4fa-18b2cbae2ea1'}]};
  assert.equal(supportedProduct(allowed),true);assert.equal(supportedProduct(excluded),false);
  const original=globalThis.fetch;globalThis.fetch=async()=>Response.json({products:[excluded,allowed],count:30});
- try{const page=await cataloguePage('/four-chain-test',0);assert.equal(page.products.length,1);assert.equal(page.products[0].code,fixture.id);assert.equal(page.hasMore,true);}finally{globalThis.fetch=original;}
+ try{const page=await cataloguePage('/two-chain-test',0);assert.equal(page.products.length,1);assert.equal(page.products[0].code,fixture.id);assert.equal(page.hasMore,true);}finally{globalThis.fetch=original;}
 });
 test('category endpoint rejects invalid inputs before contacting source',async()=>{
  for(const query of ['id=0','id=abc','id=62&offset=-1','id=62&offset=1001'])assert.equal((await category(new Request('https://test.local/api/products/category?'+query))).status,400);
