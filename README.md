@@ -1,4 +1,6 @@
-# KosárRadar Alpha 0.6
+# KosárRadar Alpha 0.7
+
+Új elsődleges munkafelület: szabad szöveges bevásárlólista és mellette kapcsolódó termékjavaslatok. Példa: `Cappy almalé, 2 liter` → egyliteres változat kiválasztása → 2 csomag → automatikus árfrissítés. A még kiválasztásra váró tételek nem számítanak bele, és a felület részösszeget jelez. [Használat és korlátok](docs/ALPHA07_SZOVEGES_LISTA.md).
 
 Kategóriákból összeállítható bevásárlólista, konkrét üzletek árai és egy-/kétüzletes kosár-összehasonlítás.
 

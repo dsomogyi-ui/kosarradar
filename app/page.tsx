@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BasketItem, Chain, Comparison, Plan, Product, Shop } from '../lib/types';
 import { eligiblePrice } from '../lib/optimizer';
 import { restore, STORAGE_KEY } from '../lib/storage';
-import { CategoryMenu } from '../components/category-menu';
+import { FreeTextList } from '../components/free-text-list';
 import { AccountLink,useAccount } from '../components/account-provider';
 
 const ft = new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 2 });
@@ -18,15 +18,13 @@ async function api<T>(url: string, signal: AbortSignal, body?: unknown): Promise
 }
 export default function Home() {
   const {user,favorites,busy:accountBusy,error:accountError,save:saveFavorites}=useAccount();
-  const [onlyFavorites,setOnlyFavorites]=useState(false),[category,setCategory]=useState<number|null>(null),[categoryName,setCategoryName]=useState(''),[hasMore,setHasMore]=useState(false);
-  const [q, setQ] = useState(''), [offset, setOffset] = useState(0), [results, setResults] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(false), [searchError, setSearchError] = useState(''), [searchStale, setSearchStale] = useState(false), [retrySearch, setRetrySearch] = useState(0);
+  const [onlyFavorites,setOnlyFavorites]=useState(false),[unresolved,setUnresolved]=useState(0);
   const [basket, setBasket] = useState<BasketItem[]>([]), [shops, setShops] = useState<Shop[]>([]), [chains, setChains] = useState<Chain[]>([]);
   const [shopIds, setShopIds] = useState<string[]>([]), [loyalty, setLoyalty] = useState<string[]>([]), [extraStopCost, setExtraStopCost] = useState(0);
   const [shopQuery, setShopQuery] = useState(''), [chainFilter, setChainFilter] = useState(''), [shopsError, setShopsError] = useState(''), [shopsLoading, setShopsLoading] = useState(true), [shopsStale, setShopsStale] = useState(false), [retryShops, setRetryShops] = useState(0);
   const [ready, setReady] = useState(false), [storageError, setStorageError] = useState(''), [notice, setNotice] = useState('');
   const [comparison, setComparison] = useState<Comparison | null>(null), [priceLoading, setPriceLoading] = useState(false), [compareError, setCompareError] = useState('');
-  const calculation = useRef<AbortController | null>(null), revision = useRef(0), searchRevision = useRef(0);
+  const calculation = useRef<AbortController | null>(null), revision = useRef(0);
   const selectedShops = useMemo(() => shopIds.flatMap(id => shops.find(s => s.id === id) || []), [shopIds, shops]);
   const selectedChains = chains.filter(c => selectedShops.some(s => s.chainId === c.id));
   const filteredShops = useMemo(() => shops.filter(s => (!onlyFavorites||favorites.includes(s.id)) && (!chainFilter || s.chainId === chainFilter) && (!shopQuery.trim() || fold(`${s.name} ${s.postalCode} ${s.city} ${s.address}`).includes(fold(shopQuery.trim())))), [shops, chainFilter, shopQuery,onlyFavorites,favorites]);
@@ -52,28 +50,13 @@ export default function Home() {
     return () => controller.abort();
   }, [retryShops]);
   useEffect(() => {
-    const controller = new AbortController(), token = ++searchRevision.current;
-    setResults([]); setHasMore(false); setSearchError(''); setSearchStale(false);
-    if (!category && q.trim().length < 3) { setLoading(false); return () => controller.abort(); }
-    setLoading(true);
-    const timer = setTimeout(() => {
-      api<{ products: Product[]; hasMore: boolean; stale: boolean }>(category ? '/api/products/category?' + new URLSearchParams({id:String(category),offset:String(offset)}) : '/api/products/search?' + new URLSearchParams({ q: q.trim(), offset: String(offset) }), controller.signal)
-        .then(d => { if (!controller.signal.aborted && token === searchRevision.current) { setResults(d.products); setHasMore(d.hasMore); setSearchStale(d.stale); } })
-        .catch(e => { if (!controller.signal.aborted && token === searchRevision.current) setSearchError(e.message); })
-        .finally(() => { if (!controller.signal.aborted && token === searchRevision.current) setLoading(false); });
-    }, 450);
-    return () => { clearTimeout(timer); controller.abort(); };
-  }, [q, offset, retrySearch,category]);
+    if (!ready || shopsLoading || !basket.length || !selectedShops.length || selectedShops.length !== shopIds.length) return;
+    const timer = setTimeout(() => { void calculate(); }, 650);
+    return () => { clearTimeout(timer); calculation.current?.abort(); };
+  }, [ready, shopsLoading, basket, shopIds, loyalty, extraStopCost]);
+
 
   function invalidate() { revision.current++; calculation.current?.abort(); setComparison(null); setPriceLoading(false); setCompareError(''); }
-  function add(p: Product) {
-    if (!p.priceable) return;
-    const existing = basket.find(i => i.code === p.code);
-    if (!existing && basket.length >= 24) { setNotice('Egy összehasonlításban legfeljebb 24 különböző termék lehet.'); return; }
-    if (existing && existing.qty >= 99) return;
-    invalidate(); setBasket(b => existing ? b.map(i => i.code === p.code ? { ...i, qty: i.qty + 1 } : i) : [...b, { ...p, qty: 1 }]); setNotice(`${p.name} a listára került.`);
-  }
-  function quantity(code: string, change: number) { invalidate(); setBasket(b => b.map(i => i.code === code ? { ...i, qty: Math.min(99, i.qty + change) } : i).filter(i => i.qty > 0)); }
   function toggleShop(id: string) { if (!shopIds.includes(id) && shopIds.length >= 8) { setNotice('Legfeljebb 8 üzletet válassz.'); return; } invalidate(); setShopIds(ids => ids.includes(id) ? ids.filter(s => s !== id) : [...ids, id]); }
   function toggleLoyalty(id: string) { invalidate(); setLoyalty(ids => ids.includes(id) ? ids.filter(s => s !== id) : [...ids, id]); }
   async function calculate() {
@@ -99,33 +82,14 @@ export default function Home() {
   </article>;
 
   return <main>
-    <header><a className="brand" href="/" aria-label="KosárRadar kezdőlap"><span className="logo">KR</span><b>KosárRadar</b></a><div className="header-actions"><span className="version">Alpha 0.6</span><AccountLink/></div></header>
-    <div className="intro"><div><p className="eyebrow">BEVÁSÁRLÁS, KISZÁMOLVA</p><h1>Ugyanaz a kosár.<br/><span>Kedvezőbb végösszeg.</span></h1></div><p>Állítsd össze a listád, válaszd ki az üzleteidet,<br className="desktop"/> és nézd meg, megéri-e két helyre menni.</p></div>
-    <div className="workspace">
-      <section className="card catalogue" aria-labelledby="search-title">
-        <div className="section-title"><span className="step">1</span><h2 id="search-title">Mi kerüljön a kosárba?</h2></div>
-        <p className="hint">Válassz kategóriát, majd egy pontos kiszerelést. Auchan · Tesco</p>
-        <CategoryMenu selected={category} onSelect={(id,name)=>{setCategory(id);setCategoryName(name);setQ('');setOffset(0);}}/>
-        <label className="search-label" htmlFor="search">Termék neve vagy vonalkódja</label>
-        <input id="search" type="search" maxLength={100} value={q} onChange={e => { setQ(e.target.value); setCategory(null); setOffset(0); }} placeholder="Termék vagy vonalkód, pl. Perwoll" autoComplete="off"/>
-        <p className="hint">A pontos kiszerelést válaszd ki. Egy darab egy teljes csomagot jelent.</p>
-        {category && <div className="selected-category"><strong>{categoryName}</strong><button onClick={()=>{setCategory(null);setOffset(0);}}>Kiválasztás törlése ×</button></div>}
-        {!category && q.length < 3 && <p className="empty">Nyiss meg egy kategóriát a fenti menüben.<br/>Név vagy vonalkód alapján is kereshetsz, legalább 3 karakterrel.</p>}
-        {loading && <p className="empty" role="status">Termékek keresése…</p>}
-        {searchError && <div className="error" role="alert">{searchError} <button onClick={() => setRetrySearch(n => n + 1)}>Újrapróbálom</button></div>}
-        {searchStale && <p className="warning">A terméklista korábbi lekérésből származik. Az árakat külön ellenőrizzük.</p>}
-        {!loading && !searchError && (category||q.trim().length >= 3) && !results.length && <p className="empty">{hasMore?'Ezen az oldalon nincs termék a két kiválasztott lánctól. Lapozz tovább.':'Nincs további találat a két lánc kínálatában. Válassz másik kategóriát vagy keresőkifejezést.'}</p>}
-        {!!results.length && <div className="result-meta"><span>{results.length} termék ezen az oldalon</span><span>{Math.floor(offset/20)+1}. oldal</span></div>}
-        <div className="product-list">{results.map(p => <article className="product" key={p.code}><div className="product-image">{p.imageUrl && <img src={p.imageUrl} alt="" loading="lazy" onError={e => { e.currentTarget.style.visibility = 'hidden'; }}/>}</div><div className="product-info"><strong>{p.name}</strong><span>{size(p)}</span><small>Azonosító: {p.code}</small>{p.bulk && <small>Kimért termék: ebben a verzióban még nem számolható.</small>}</div><button className="add" disabled={!p.priceable || !ready} aria-label={`${p.name} kosárba`} onClick={() => add(p)}>+<span> Kosárba</span></button></article>)}</div>
-        {(offset > 0 || hasMore) && <nav className="pagination" aria-label="Találati oldalak"><button disabled={!offset || loading} onClick={() => setOffset(n => Math.max(0, n - 20))}>Előző</button><button disabled={!hasMore || loading} onClick={() => setOffset(n => n + 20)}>Következő</button></nav>}
-      </section>
-      <aside className="card basket" aria-labelledby="basket-title"><div className="section-title"><h2 id="basket-title">Bevásárlólistám</h2><span className="badge">{basket.reduce((n, p) => n + p.qty, 0)} db</span></div>
-        {!basket.length && <div className="empty">A listád még üres.<br/>Válassz termékeket a kategóriákból.</div>}
-        {basket.map(p => <div className="basket-row" key={p.code}><div><strong>{p.name}</strong><span>{size(p)}</span></div><div className="counter"><button aria-label={`${p.name} mennyiségének csökkentése`} onClick={() => quantity(p.code, -1)}>−</button><output aria-label={`${p.name} darabszáma`}>{p.qty}</output><button disabled={p.qty >= 99} aria-label={`${p.name} mennyiségének növelése`} onClick={() => quantity(p.code, 1)}>+</button></div></div>)}
-        <div className="basket-footer"><span>{selectedShops.length} kiválasztott üzlet</span><button className="primary" disabled={!ready || !basket.length || !selectedShops.length || selectedShops.length !== shopIds.length || priceLoading || shopsLoading} onClick={calculate}>{priceLoading ? 'Árak összehasonlítása…' : 'Hol éri meg vásárolni?'}</button>{!selectedShops.length && <a href="#stores">Válassz üzleteket az összehasonlításhoz ↓</a>}<small>A listát és a beállításokat ezen az eszközön mentjük.</small></div>
-        {storageError && <p className="warning" role="alert">{storageError}</p>}
-      </aside>
-    </div>
+    <header><a className="brand" href="/" aria-label="KosárRadar kezdőlap"><span className="logo">KR</span><b>KosárRadar</b></a><div className="header-actions"><span className="version">Alpha 0.7</span><AccountLink/></div></header>
+    <div className="intro compact-intro"><div><h1>Írd le. Válaszd ki. <span>Számolunk.</span></h1><p>Szabad szöveges bevásárlólista · Auchan és Tesco</p></div></div>
+    {ready ? <FreeTextList initialBasket={basket} onChange={(next, pending) => { invalidate(); setBasket(next); setUnresolved(pending); }} /> : <p role="status">Bevásárlólista betöltése…</p>}
+    <section className="card basket-summary" aria-label="Kosár számítási állapota">
+      <div><strong>{basket.reduce((n,p)=>n+p.qty,0)} kiválasztott csomag · {selectedShops.length} üzlet</strong><p className="hint">{unresolved ? `${unresolved} tétel még kiválasztásra vár. Az eredmény csak részösszeg.` : basket.length ? 'A kiválasztás vagy a beállítások módosításakor automatikusan újraszámolunk.' : 'Válassz konkrét terméket az árak kiszámításához.'}</p></div>
+      {!selectedShops.length ? <a className="button-link" href="#stores">Válassz üzleteket az árakhoz ↓</a> : <button disabled={!basket.length || priceLoading || shopsLoading} onClick={calculate}>{priceLoading ? 'Árak frissítése…' : 'Árak újraellenőrzése'}</button>}
+      {storageError && <p className="warning" role="alert">{storageError}</p>}
+    </section>
     <p className="sr-only" role="status" aria-live="polite">{notice}</p>
     <section className="card stores" id="stores" aria-labelledby="stores-title"><div className="section-title"><span className="step">2</span><h2 id="stores-title">Melyik üzletek jöhetnek szóba?</h2><span className="muted">{shopIds.length} / 8</span></div>
       <p className="hint">Auchan és Tesco. Konkrét üzletek árait hasonlítjuk össze. Keress településre, irányítószámra vagy címre.</p>
@@ -141,11 +105,11 @@ export default function Home() {
       <p className="source-note">Ebben a prototípusban kizárólag az Auchan és Tesco üzletei választhatók.</p>
       {!!selectedShops.length && <div className="preferences"><fieldset><legend>Melyik láncnál van hűségkártyád?</legend><div className="loyalty">{selectedChains.map(c => <label key={c.id}><input type="checkbox" checked={loyalty.includes(c.id)} onChange={() => toggleLoyalty(c.id)}/>{c.name}</label>)}</div><p className="hint">Csak a megjelölt láncok általános hűségáraival számolunk. Egyéni kuponokat nem vonunk le.</p></fieldset><div><label htmlFor="extra-cost">Második megálló többletköltsége</label><div className="cost-input"><input id="extra-cost" type="number" min="0" max="100000" step="50" value={extraStopCost} onChange={e => { invalidate(); setExtraStopCost(Math.min(100000, Math.max(0, Number(e.target.value) || 0))); }}/><span>Ft</span></div><p className="hint">Saját becslés az extra útra és időre. A 0 Ft azt jelenti, hogy ezeket nem számoljuk.</p></div></div>}
     </section>
-    {(priceLoading || compareError || comparison) && <section className="card comparison" aria-labelledby="compare-title"><div className="section-title"><span className="step">3</span><h2 id="compare-title">Így alakul a kosarad</h2></div>
+    {(priceLoading || compareError || comparison) && <section className="card comparison" aria-labelledby="compare-title"><div className="section-title"><span className="step">3</span><h2 id="compare-title">{unresolved ? "A kiválasztott tételek részösszege" : "Így alakul a kosarad"}</h2></div>
       {priceLoading && <p className="empty" role="status">Ellenőrizzük az árakat a kiválasztott üzletekben…</p>}
       {compareError && <div className="error" role="alert">{compareError} <button onClick={calculate}>Újrapróbálom</button></div>}
-      {comparison && <>{comparison.warnings.map(w => <p className="warning" key={w}>{w}</p>)}
-        {best ? <><p className="result-summary">{single && pair && pair.total < single.total ? <>Két üzlettel <b>{ft.format(single.total - pair.total)}</b> maradhat nálad az egyboltos megoldáshoz képest.</> : single ? 'A legkedvezőbb teljes kosárhoz elég egy üzlet.' : 'A teljes kosár két üzletből állítható össze.'}</p><div className="plans">{single && renderPlan(single, 'EGY ÜZLET')}{pair && renderPlan(pair, 'KÉT ÜZLET')}</div>{!single && <p className="hint">Egyetlen kiválasztott üzletben sincs minden tételhez használható ár.</p>}{!pair && <p className="hint">A második üzlet bevonása nem ad külön, teljes kosaras megoldást.</p>}</> : <div className="warning"><strong>Még nincs teljes kosár.</strong><p>Legalább egy tételhez hiányzik a használható ár, vagy a kosár több mint két üzletet igényel. A részösszegek nem hasonlíthatók egy teljes kosárhoz.</p></div>}
+      {comparison && <>{unresolved > 0 && <p className="warning"><strong>Ez még nem a teljes bevásárlólista ára.</strong> {unresolved} tételnél konkrét terméket kell választanod.</p>}{comparison.warnings.map(w => <p className="warning" key={w}>{w}</p>)}
+        {best ? <><p className="result-summary">{unresolved ? "Az alábbi összegek csak a már kiválasztott tételeket tartalmazzák." : single && pair && pair.total < single.total ? <>Két üzlettel <b>{ft.format(single.total - pair.total)}</b> maradhat nálad az egyboltos megoldáshoz képest.</> : single ? 'A legkedvezőbb teljes kosárhoz elég egy üzlet.' : 'A teljes kosár két üzletből állítható össze.'}</p><div className="plans">{single && renderPlan(single, unresolved ? 'EGY ÜZLET · RÉSZÖSSZEG' : 'EGY ÜZLET')}{pair && renderPlan(pair, unresolved ? 'KÉT ÜZLET · RÉSZÖSSZEG' : 'KÉT ÜZLET')}</div>{!single && <p className="hint">Egyetlen kiválasztott üzletben sincs minden tételhez használható ár.</p>}{!pair && <p className="hint">A második üzlet bevonása nem ad külön, teljes kosaras megoldást.</p>}</> : <div className="warning"><strong>Még nincs teljes kosár.</strong><p>Legalább egy tételhez hiányzik a használható ár, vagy a kosár több mint két üzletet igényel. A részösszegek nem hasonlíthatók egy teljes kosárhoz.</p></div>}
         <details className="coverage" open={!best}><summary>Árak és hiányzó tételek üzletenként</summary><div className="table-scroll"><table><thead><tr><th>Termék / csomag</th>{selectedShops.map(s => <th key={s.id}>{s.name}<small>{s.city}, {s.address}</small></th>)}</tr></thead><tbody>{basket.map(p => <tr key={p.code}><th>{p.name}<small>{p.qty} db · {size(p)}</small></th>{selectedShops.map(s => { const quote = comparison.quotes.find(v => v.code === p.code && v.shopId === s.id), price = quote && eligiblePrice(quote.prices, loyalty.includes(s.chainId)); const reason = quote?.status === 'error' ? 'Lekérési hiba' : quote?.status === 'stale' ? 'Elavult ár' : quote?.status === 'unsupported' ? 'Nem számolható' : quote?.status === 'ok' && !price ? 'Nincs jogosult ár' : 'Nincs áradat'; return <td key={s.id}>{quote?.status === 'ok' && price ? <><b>{ft.format(price.amount)}</b>{price.type === 'LOYALTY' && <small>Hűségár</small>}{price.type === 'DISCOUNTED' && <small>Akciós ár</small>}{quote.returnFee > 0 && <small>+ {ft.format(quote.returnFee)} visszaváltási díj</small>}</> : <span className="missing">{reason}</span>}</td>; })}</tr>)}</tbody></table></div></details>
         <p className="source-note">Forrás: <a href="https://arfigyelo.gvh.hu" target="_blank" rel="noreferrer">GVH Árfigyelő</a>. {comparison.oldestObservation && <>A felhasznált lekérések közül a legrégebbi: {stamp(comparison.oldestObservation)} (budapesti idő).</>} Ez a lekérés ideje, nem a bolti ár módosításának időpontja.</p>
         <p className="hint">Az ár megléte nem jelent készletigazolást. Indulás előtt ellenőrizd az ajánlatot és a kedvezmény feltételeit. Az első üzlethez vezető út költsége nincs benne.</p>
