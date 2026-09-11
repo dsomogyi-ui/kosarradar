@@ -1,3 +1,3 @@
 import "./globals.css";
-export const metadata={title:"KosárRadar",description:"Bevásárlólista és élő ár-összehasonlítás"};
+export const metadata={title:"KosárRadar – Hol éri meg vásárolni?",description:"Bevásárlólista és üzletenkénti kosár-összehasonlítás a GVH Árfigyelő árai alapján.",icons:{icon:"/icon.svg"}};
 export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="hu"><body>{children}</body></html>}

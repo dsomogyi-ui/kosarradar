@@ -1,0 +1,140 @@
+{
+  "comparedAt": "2026-09-11T09:23:37.740Z",
+  "oldestObservation": "2026-09-11T09:23:29.805Z",
+  "products": [
+    {
+      "code": "9000101810325",
+      "name": "Perwoll Color kímélő mosószer 75 mosás 3750 ml",
+      "packaging": "3.75",
+      "unit": "l",
+      "bulk": false,
+      "returnFee": 0,
+      "imageUrl": "https://cdnarfigyeloprodweu.azureedge.net/images/product-image-9000101810325.jpg",
+      "priceable": true,
+      "source": "gvh",
+      "qty": 1
+    }
+  ],
+  "quotes": [
+    {
+      "code": "9000101810325",
+      "shopId": "rossmann-241",
+      "prices": [
+        {
+          "type": "NORMAL",
+          "amount": 7333,
+          "unitAmount": 1955.46
+        }
+      ],
+      "returnFee": 0,
+      "observedAt": "2026-09-11T09:23:29.805Z",
+      "stale": false,
+      "status": "ok"
+    },
+    {
+      "code": "9000101810325",
+      "shopId": "auchan-007",
+      "prices": [
+        {
+          "type": "NORMAL",
+          "amount": 7199,
+          "unitAmount": 1920
+        }
+      ],
+      "returnFee": 0,
+      "observedAt": "2026-09-11T09:23:29.805Z",
+      "stale": false,
+      "status": "ok"
+    },
+    {
+      "code": "9000101810325",
+      "shopId": "tesco-1025",
+      "prices": [
+        {
+          "type": "NORMAL",
+          "amount": 8590,
+          "unitAmount": 2290.67
+        }
+      ],
+      "returnFee": 0,
+      "observedAt": "2026-09-11T09:23:29.805Z",
+      "stale": false,
+      "status": "ok"
+    }
+  ],
+  "plans": [
+    {
+      "id": "auchan-007",
+      "shopIds": [
+        "auchan-007"
+      ],
+      "lines": [
+        {
+          "code": "9000101810325",
+          "name": "Perwoll Color kímélő mosószer 75 mosás 3750 ml",
+          "qty": 1,
+          "shopId": "auchan-007",
+          "unitPrice": 7199,
+          "returnFee": 0,
+          "total": 7199,
+          "priceKind": "NORMAL"
+        }
+      ],
+      "missingCodes": [],
+      "complete": true,
+      "subtotal": 7199,
+      "deposits": 0,
+      "travel": 0,
+      "total": 7199
+    },
+    {
+      "id": "rossmann-241",
+      "shopIds": [
+        "rossmann-241"
+      ],
+      "lines": [
+        {
+          "code": "9000101810325",
+          "name": "Perwoll Color kímélő mosószer 75 mosás 3750 ml",
+          "qty": 1,
+          "shopId": "rossmann-241",
+          "unitPrice": 7333,
+          "returnFee": 0,
+          "total": 7333,
+          "priceKind": "NORMAL"
+        }
+      ],
+      "missingCodes": [],
+      "complete": true,
+      "subtotal": 7333,
+      "deposits": 0,
+      "travel": 0,
+      "total": 7333
+    },
+    {
+      "id": "tesco-1025",
+      "shopIds": [
+        "tesco-1025"
+      ],
+      "lines": [
+        {
+          "code": "9000101810325",
+          "name": "Perwoll Color kímélő mosószer 75 mosás 3750 ml",
+          "qty": 1,
+          "shopId": "tesco-1025",
+          "unitPrice": 8590,
+          "returnFee": 0,
+          "total": 8590,
+          "priceKind": "NORMAL"
+        }
+      ],
+      "missingCodes": [],
+      "complete": true,
+      "subtotal": 8590,
+      "deposits": 0,
+      "travel": 0,
+      "total": 8590
+    }
+  ],
+  "warnings": []
+}

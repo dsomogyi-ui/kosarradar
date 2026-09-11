@@ -1,0 +1,11 @@
+export type PriceKind = 'NORMAL' | 'DISCOUNTED' | 'LOYALTY';
+export type Price = { type: PriceKind; amount: number; unitAmount?: number };
+export type Product = { code: string; name: string; packaging: string; unit: string; imageUrl?: string; bulk: boolean; returnFee: number; priceable: boolean; source: 'gvh' | 'catalogue' };
+export type BasketItem = Product & { qty: number };
+export type Chain = { id: string; name: string };
+export type Shop = { id: string; chainId: string; name: string; city: string; postalCode: string; address: string };
+export type Observation = { observedAt: string; stale: boolean };
+export type Quote = Observation & { code: string; shopId: string; prices: Price[]; returnFee: number; status: 'ok' | 'missing' | 'stale' | 'error' | 'unsupported'; reason?: string };
+export type Line = { code: string; name: string; qty: number; shopId: string; unitPrice: number; returnFee: number; total: number; priceKind: PriceKind };
+export type Plan = { id: string; shopIds: string[]; lines: Line[]; missingCodes: string[]; complete: boolean; subtotal: number; deposits: number; travel: number; total: number };
+export type Comparison = { quotes: Quote[]; plans: Plan[]; products: Product[]; comparedAt: string; oldestObservation: string | null; warnings: string[] };
