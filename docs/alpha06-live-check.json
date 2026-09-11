@@ -1,0 +1,22 @@
+{
+  "checkedAt": "2026-09-11T10:18:36.495Z",
+  "chains": [
+    "Aldi",
+    "Tesco",
+    "Auchan",
+    "Lidl"
+  ],
+  "shopCount": 631,
+  "rootCategories": 9,
+  "appleProductsOnFirstPage": 14,
+  "miskolc": {
+    "normalTotal": 999,
+    "loyaltyTotal": 749,
+    "shops": [
+      "auchan-021",
+      "auchan-014"
+    ]
+  },
+  "excludedStoreRejected": true,
+  "auth": "not activated or live-tested"
+}

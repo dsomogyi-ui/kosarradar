@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {writeFileSync} from 'node:fs';
+import {getShops} from '../lib/gvh.ts';
+import {getCategories,isLeaf} from '../lib/catalogue.ts';
+import {GET as browse} from '../app/api/products/category/route.ts';
+import {compare} from '../lib/compare.ts';
+const [shops,categories]=await Promise.all([getShops(),getCategories()]);
+assert.equal(shops.chains.length,4);assert.deepEqual(shops.chains.map(c=>c.name).sort(),['Aldi','Auchan','Lidl','Tesco']);
+assert.equal(isLeaf(categories.categories,62),true);
+const r=await browse(new Request('https://test.local/api/products/category?id=62'));
+assert.equal(r.status,200);const apple=await r.json();assert.ok(apple.products.length>0);
+const payload={items:[{code:'5993330001081',qty:1}],shopIds:['auchan-021','auchan-014'],loyaltyChainIds:[],extraStopCost:0};
+const normal=await compare(payload),member=await compare({...payload,loyaltyChainIds:['e9cc63fd-52e0-4c1e-ba8d-d135d7285c63']});
+assert.equal(normal.plans[0]?.complete,true);assert.equal(member.plans[0]?.complete,true);assert.ok(member.plans[0].total<=normal.plans[0].total);
+await assert.rejects(compare({...payload,shopIds:['rossmann-241']}),{status:400});
+const report={checkedAt:new Date().toISOString(),chains:shops.chains.map(c=>c.name),shopCount:shops.shops.length,rootCategories:categories.categories.length,appleProductsOnFirstPage:apple.products.length,miskolc:{normalTotal:normal.plans[0].total,loyaltyTotal:member.plans[0].total,shops:payload.shopIds},excludedStoreRejected:true,auth:'not activated or live-tested'};
+writeFileSync('docs/alpha06-live-check.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
