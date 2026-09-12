@@ -1,3 +1,4 @@
+import { allowedChain } from './retailers.ts';
 import type { Chain, Observation, Price, Product, Shop } from './types.ts';
 export class SourceError extends Error {
   code: string; status: number;
@@ -19,7 +20,7 @@ export async function source(path: string, ttl = 900_000): Promise<Cached> {
       if (active >= 12) throw new SourceError('busy', 'Most sok lekérés fut. Próbáld újra rövidesen.');
       active++;
       try {
-        const response = await fetch(BASE + path, { cache: 'no-store', signal: AbortSignal.timeout(15000), headers: { Accept: 'application/json', 'User-Agent': 'KosarRadar/0.5 (price comparison prototype)' } });
+        const response = await fetch(BASE + path, { cache: 'no-store', signal: AbortSignal.timeout(15000), headers: { Accept: 'application/json', 'User-Agent': 'KosarRadar/0.6 (price comparison prototype)' } });
         if (!response.ok) throw new SourceError(response.status === 404 ? 'not_found' : 'upstream', 'Az árforrás most nem ad választ.', response.status === 404 ? 404 : 503);
         const body = await response.text();
         if (body.length > 6_000_000) throw new SourceError('invalid_response', 'Az árforrás válasza nem feldolgozható.');
@@ -66,13 +67,15 @@ export function prices(value: unknown): Price[] {
 }
 export async function getShops(): Promise<Observation & { shops: Shop[]; chains: Chain[] }> {
   const [c, s] = await Promise.all([source('/chain-stores', 86400_000), source('/shops', 86400_000)]);
-  const chains = array(record(c.value).chainStores).map(v => { const r = record(v); return { id: requiredText(r.uuid), name: requiredText(r.name) }; });
+  const chains = array(record(c.value).chainStores).map(v => { const r = record(v); return { id: requiredText(r.uuid), name: requiredText(r.name) }; }).filter(c => allowedChain(c.id));
   const names = new Map(chains.map(v => [v.id, v.name]));
   const shops = array(record(s.value).shops).map(v => {
     const r = record(v), chainId = requiredText(r.chainStoreUuid);
-    return { id: requiredText(r.uuid), chainId, name: names.get(chainId) || 'Ismeretlen lánc', city: requiredText(r.city), postalCode: String(r.postalCode ?? ''), address: requiredText(r.address) };
+    const loc = r.location && typeof r.location === 'object' ? record(r.location) : {};
+    const located = typeof loc.latitude === 'number' && typeof loc.longitude === 'number' && Number.isFinite(loc.latitude) && Number.isFinite(loc.longitude) && loc.latitude >= 45 && loc.latitude <= 49 && loc.longitude >= 16 && loc.longitude <= 23;
+    return { id: requiredText(r.uuid), chainId, name: names.get(chainId) || 'Ismeretlen lánc', city: requiredText(r.city), postalCode: String(r.postalCode ?? ''), address: requiredText(r.address), ...(located ? { latitude: loc.latitude as number, longitude: loc.longitude as number } : {}) };
   });
-  return { shops, chains, stale: c.stale || s.stale, observedAt: [c.observedAt, s.observedAt].sort()[0] };
+  return { shops: shops.filter(s => allowedChain(s.chainId)), chains, stale: c.stale || s.stale, observedAt: [c.observedAt, s.observedAt].sort()[0] };
 }
 export function errorResponse(e: unknown): Response {
   const error = e instanceof SourceError ? e : new SourceError('internal', 'A kérés nem sikerült. Próbáld újra.');
