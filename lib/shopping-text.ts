@@ -1,7 +1,7 @@
 import type { BasketItem, Product } from './types.ts';
 
 export type Need = { query: string; amount: number; unit: string; error?: string };
-export type ShoppingLine = { id: string; text: string; selected?: BasketItem };
+export type ShoppingLine = { id: string; text: string; selected?: BasketItem; interpretation?: string; aiNote?: string };
 export const normalize = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/,/g, '.');
 const units: Record<string, [string, number]> = { l: ['volume', 1000], liter: ['volume', 1000], litert: ['volume', 1000], ml: ['volume', 1], kg: ['weight', 1000], g: ['weight', 1], db: ['count', 1], darab: ['count', 1], csomag: ['count', 1] };
 const quantity = /(?:^|\s)(-?\d+(?:[.,]\d+)?)\s*(liter|litert|ml|kg|csomag|darab|db|l|g)(?=\s|$)/i;

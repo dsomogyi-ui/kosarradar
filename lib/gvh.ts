@@ -71,7 +71,9 @@ export async function getShops(): Promise<Observation & { shops: Shop[]; chains:
   const names = new Map(chains.map(v => [v.id, v.name]));
   const shops = array(record(s.value).shops).map(v => {
     const r = record(v), chainId = requiredText(r.chainStoreUuid);
-    return { id: requiredText(r.uuid), chainId, name: names.get(chainId) || 'Ismeretlen lánc', city: requiredText(r.city), postalCode: String(r.postalCode ?? ''), address: requiredText(r.address) };
+    const loc = r.location && typeof r.location === 'object' ? record(r.location) : {};
+    const located = typeof loc.latitude === 'number' && typeof loc.longitude === 'number' && Number.isFinite(loc.latitude) && Number.isFinite(loc.longitude) && loc.latitude >= 45 && loc.latitude <= 49 && loc.longitude >= 16 && loc.longitude <= 23;
+    return { id: requiredText(r.uuid), chainId, name: names.get(chainId) || 'Ismeretlen lánc', city: requiredText(r.city), postalCode: String(r.postalCode ?? ''), address: requiredText(r.address), ...(located ? { latitude: loc.latitude as number, longitude: loc.longitude as number } : {}) };
   });
   return { shops: shops.filter(s => allowedChain(s.chainId)), chains, stale: c.stale || s.stale, observedAt: [c.observedAt, s.observedAt].sort()[0] };
 }

@@ -6,16 +6,18 @@ import { restore } from '../lib/storage';
 import { CategoryMenu } from './category-menu';
 
 const KEY = 'kosarradar:text-list:v1', RECENT = 'kosarradar:recent-products:v1';
-type Props = { initialBasket: BasketItem[]; onChange: (basket: BasketItem[], pending: number) => void };
-export function FreeTextList({ initialBasket, onChange }: Props) {
+type Props = { initialBasket: BasketItem[]; loadedLines?: ShoppingLine[]; onChange: (basket: BasketItem[], pending: number, lines: ShoppingLine[]) => void };
+export function FreeTextList({ initialBasket, loadedLines, onChange }: Props) {
   const [lines, setLines] = useState<ShoppingLine[]>([]), [draft, setDraft] = useState(''), [active, setActive] = useState('');
+  const [aiConfigured,setAiConfigured]=useState(false),[aiBusy,setAiBusy]=useState(false),[aiError,setAiError]=useState('');
+  const aiGeneration=useRef(0);
   const [ready, setReady] = useState(false), [message, setMessage] = useState(''), [storageError, setStorageError] = useState('');
   const [products, setProducts] = useState<Product[]>([]), [loading, setLoading] = useState(false), [error, setError] = useState(''), [stale, setStale] = useState(false);
   const [offset, setOffset] = useState(0), [hasMore, setHasMore] = useState(false), [retry, setRetry] = useState(0);
   const [category, setCategory] = useState<number | null>(null), [recent, setRecent] = useState<Record<string, string>>({});
   const notify = useRef(onChange); notify.current = onChange;
   const initial = useRef(initialBasket);
-  const current = lines.find(l => l.id === active), need = parseNeed(current?.text || '');
+  const current = lines.find(l => l.id === active), need = parseNeed(current?.interpretation || current?.text || '');
   const query = need.query, preferenceKey = normalize(query);
 
   useEffect(() => {
@@ -36,7 +38,7 @@ export function FreeTextList({ initialBasket, onChange }: Props) {
       if (prefs && typeof prefs === 'object' && !Array.isArray(prefs)) setRecent(Object.fromEntries(Object.entries(prefs).filter(([k, v]) => k.length <= 100 && typeof v === 'string' && /^[\w-]{1,64}$/.test(v)).slice(-100)) as Record<string, string>);
     } catch { restored = initial.current.map(p => ({ id: crypto.randomUUID(), text: `${p.name}, ${p.qty} db`, selected: p })); setStorageError('A korábbi szöveges lista nem tölthető be teljesen. Ellenőrizd a tételeket.'); }
     setLines(restored); setActive(restored[0]?.id || ''); setReady(true);
-    notify.current(selectedBasket(restored), restored.filter(l => !l.selected).length);
+    notify.current(selectedBasket(restored), restored.filter(l => !l.selected).length, restored);
   }, []);
 
   useEffect(() => {
@@ -61,10 +63,19 @@ export function FreeTextList({ initialBasket, onChange }: Props) {
     return () => { clearTimeout(timer); c.abort(); };
   }, [query, active, category, offset, retry, need.error]);
 
+  useEffect(()=>{fetch('/api/list/review',{cache:'no-store'}).then(r=>r.json()).then(d=>setAiConfigured(d.configured===true)).catch(()=>setAiConfigured(false));return()=>{aiGeneration.current++;};},[]);
+  useEffect(()=>{if(!loadedLines)return;const next=loadedLines.map(l=>({...l,id:crypto.randomUUID()}));update(next);setActive(next[0]?.id||'');setProducts([]);setOffset(0);setCategory(null);setMessage('Mentett kosár megnyitva.');},[loadedLines]);
+  async function review(){
+    if(aiBusy||!lines.length)return;const token=++aiGeneration.current;setAiBusy(true);setAiError('');
+    try{const r=await fetch('/api/list/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lines:lines.map(l=>l.text)})});const d=await r.json();if(!r.ok)throw Error(d.error);
+      if(token!==aiGeneration.current)return;
+      update(lines.map((l,i)=>l.selected?l:{...l,interpretation:d.lines[i].interpretation,aiNote:d.lines[i].note}));setOffset(0);setCategory(null);setMessage('AI-felülvizsgálat kész. Ellenőrizd az értelmezést, majd válassz terméket a listából.');
+    }catch(e){if(token===aiGeneration.current)setAiError(e instanceof Error?e.message:'A felülvizsgálat nem sikerült.');}finally{setAiBusy(false);}
+  }
   function update(next: ShoppingLine[]) {
     const basket = selectedBasket(next);
     if (basket.some(p => p.qty > 99)) { setMessage('Azonos termékből összesen legfeljebb 99 csomag választható.'); return false; }
-    setLines(next); notify.current(basket, next.filter(l => !l.selected).length); return true;
+    setLines(next); notify.current(basket, next.filter(l => !l.selected).length, next); aiGeneration.current++; return true;
   }
   function focus(id: string, reveal = false) { setActive(id); setOffset(0); setCategory(null); setMessage(''); if (reveal && window.matchMedia('(max-width: 760px)').matches) requestAnimationFrame(() => document.getElementById('suggestions-title')?.scrollIntoView({ block: 'start' })); }
   function append(text: string) {
@@ -94,16 +105,24 @@ export function FreeTextList({ initialBasket, onChange }: Props) {
       </form>
       <p className="hint">Új sorral, pontosvesszővel vagy vesszővel is elválaszthatod a tételeket. A mennyiséget mértékegységgel írd.</p>
       {!lines.length && <p className="empty">A listád még üres. Írj be egy terméket, vagy indítsd a Cappy-példát.</p>}
+      <div className="ai-toolbar"><button disabled={!aiConfigured||aiBusy||!lines.length} onClick={review}>{aiBusy?'AI-felülvizsgálat…':'AI átnézi a listát'}</button><span className="hint">{aiConfigured?'Az AI értelmezi a beírást; a terméket te választod ki.':'Az AI még nincs bekapcsolva. Most név és márka alapján keresünk a katalógusban.'}</span></div>
+      {aiError&&<p className="error" role="alert">{aiError}</p>}
       <div className="need-list">{lines.map((line, i) => <article className={'need-row ' + (line.id === active ? 'active' : '')} key={line.id}>
         <div className="need-heading"><label htmlFor={'need-' + line.id}>{i + 1}. tétel</label><button className="remove-need" aria-label={`${line.text} törlése`} onClick={() => { const next = lines.filter(l => l.id !== line.id); update(next); if (active === line.id) focus(next[0]?.id || ''); }}>×</button></div>
-        <input id={'need-' + line.id} value={line.text} maxLength={200} onFocus={() => { if (active !== line.id) focus(line.id); }} onChange={e => { update(lines.map(l => l.id === line.id ? { ...l, text: e.target.value, selected: undefined } : l)); setOffset(0); setCategory(null); }} />
-        {line.selected ? <><p className="chosen-product"><strong>{line.selected.name}</strong><span>{line.selected.qty} × {line.selected.packaging.replace('.', ',')} {line.selected.unit}</span></p><button className="pick-need" onClick={() => focus(line.id)}>Másik változat választása →</button></> : <button className="pick-need" onClick={() => focus(line.id)}>Kiválasztásra vár · Termékek megtekintése →</button>}
+        <input id={'need-' + line.id} value={line.text} maxLength={200} onFocus={() => { if (active !== line.id) focus(line.id); }} onChange={e => { update(lines.map(l => l.id === line.id ? { ...l, text: e.target.value, selected: undefined, interpretation: undefined, aiNote: undefined } : l)); setOffset(0); setCategory(null); }} />
+        {line.interpretation&&<p className="hint"><strong>AI értelmezés:</strong> {line.interpretation}{line.aiNote&&<> · {line.aiNote}</>} <button className="text-link" onClick={()=>{update(lines.map(l=>l.id===line.id?{...l,interpretation:undefined,aiNote:undefined,selected:undefined}:l));}}>Eredeti szöveg használata</button></p>}
+        {line.id===active&&<div className="inline-picker"><label htmlFor={'product-'+line.id}>Konkrét termék és kiszerelés</label><select id={'product-'+line.id} value={line.selected?.code||''} disabled={loading||!!need.error} onChange={e=>{const p=shown.find(p=>p.code===e.target.value);if(p)choose(p);}}>
+          <option value="">{loading?'Termékek keresése…':error?'A keresés sikertelen':shown.length?'Válassz a termékjavaslatokból':'Nincs találat – pontosítsd a nevet'}</option>
+          {line.selected&&!shown.some(p=>p.code===line.selected?.code)&&<option value={line.selected.code}>{line.selected.name} · {line.selected.packaging} {line.selected.unit}</option>}
+          {shown.map(p=><option key={p.code} value={p.code} disabled={!!packageChoice(need,p).error}>{p.name} · {p.packaging} {p.unit}{recent[preferenceKey]===p.code?' · Korábbi választás':''}</option>)}
+        </select></div>}
+        {line.selected ? <><p className="chosen-product"><strong>{line.selected.name}</strong><span>{line.selected.qty} × {line.selected.packaging.replace('.', ',')} {line.selected.unit}</span></p><button className="pick-need" onClick={() => focus(line.id, true)}>Másik változat választása →</button></> : <button className="pick-need" onClick={() => focus(line.id, true)}>Kiválasztásra vár · Termékek megtekintése →</button>}
       </article>)}</div>
       {storageError && <p className="warning" role="alert">{storageError}</p>}
       <p className="hint">A szöveges listát és a korábbi termékválasztást ezen az eszközön jegyezzük meg.</p>
     </section>
     <section className="card suggestions-panel" aria-labelledby="suggestions-title">
-      <div className="section-title"><span className="step">2</span><h2 id="suggestions-title">{current ? 'Válassz konkrét terméket' : 'Ide kerülnek a javaslatok'}</h2></div>
+      <div className="section-title"><h2 id="suggestions-title">{current ? 'Válassz konkrét terméket' : 'Ide kerülnek a javaslatok'}</h2></div>
       {current ? <>
         <div className="need-summary"><strong>{need.query || 'Terméknév szükséges'}</strong><span>Igény: {need.amount.toLocaleString('hu-HU')} {need.unit} · Auchan és Tesco</span></div>
         {need.error && <p className="warning">{need.error}</p>}

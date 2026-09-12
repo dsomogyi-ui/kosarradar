@@ -1,9 +1,14 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BasketItem, Chain, Comparison, Plan, Product, Shop } from '../lib/types';
-import { eligiblePrice } from '../lib/optimizer';
+import { eligiblePrice, optimize } from '../lib/optimizer';
 import { restore, STORAGE_KEY } from '../lib/storage';
 import { FreeTextList } from '../components/free-text-list';
+import { AreaPicker } from '../components/area-picker';
+import { BasketSaves } from '../components/basket-saves';
+import { nearbyShops, validPlace, type Area } from '../lib/location';
+import type { ShoppingLine } from '../lib/shopping-text';
+import type { BasketSnapshot } from '../lib/saved-baskets';
 import { AccountLink,useAccount } from '../components/account-provider';
 
 const ft = new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 2 });
@@ -18,21 +23,28 @@ async function api<T>(url: string, signal: AbortSignal, body?: unknown): Promise
 }
 export default function Home() {
   const {user,favorites,busy:accountBusy,error:accountError,save:saveFavorites}=useAccount();
+  const [area,setArea]=useState<Area>({place:null,radius:20}),[basketName,setBasketName]=useState('Heti bevásárlás'),[lines,setLines]=useState<ShoppingLine[]>([]),[loadedLines,setLoadedLines]=useState<ShoppingLine[]|undefined>();
+  const [completedShops,setCompletedShops]=useState(0);
   const [onlyFavorites,setOnlyFavorites]=useState(false),[unresolved,setUnresolved]=useState(0);
   const [basket, setBasket] = useState<BasketItem[]>([]), [shops, setShops] = useState<Shop[]>([]), [chains, setChains] = useState<Chain[]>([]);
   const [shopIds, setShopIds] = useState<string[]>([]), [loyalty, setLoyalty] = useState<string[]>([]), [extraStopCost, setExtraStopCost] = useState(0);
-  const [shopQuery, setShopQuery] = useState(''), [chainFilter, setChainFilter] = useState(''), [shopsError, setShopsError] = useState(''), [shopsLoading, setShopsLoading] = useState(true), [shopsStale, setShopsStale] = useState(false), [retryShops, setRetryShops] = useState(0);
+  const [chainFilter, setChainFilter] = useState(''), [shopsError, setShopsError] = useState(''), [shopsLoading, setShopsLoading] = useState(true), [shopsStale, setShopsStale] = useState(false), [retryShops, setRetryShops] = useState(0);
   const [ready, setReady] = useState(false), [storageError, setStorageError] = useState(''), [notice, setNotice] = useState('');
   const [comparison, setComparison] = useState<Comparison | null>(null), [priceLoading, setPriceLoading] = useState(false), [compareError, setCompareError] = useState('');
   const calculation = useRef<AbortController | null>(null), revision = useRef(0);
   const selectedShops = useMemo(() => shopIds.flatMap(id => shops.find(s => s.id === id) || []), [shopIds, shops]);
   const selectedChains = chains.filter(c => selectedShops.some(s => s.chainId === c.id));
-  const filteredShops = useMemo(() => shops.filter(s => (!onlyFavorites||favorites.includes(s.id)) && (!chainFilter || s.chainId === chainFilter) && (!shopQuery.trim() || fold(`${s.name} ${s.postalCode} ${s.city} ${s.address}`).includes(fold(shopQuery.trim())))), [shops, chainFilter, shopQuery,onlyFavorites,favorites]);
-  const visibleShops = filteredShops.slice(0, 40);
+  const nearby=useMemo(()=>nearbyShops(shops,area),[shops,area]);
+  const filteredShops=useMemo(()=>nearby.filter(s=>(!onlyFavorites||favorites.includes(s.id))&&(!chainFilter||s.chainId===chainFilter)),[nearby,onlyFavorites,favorites,chainFilter]);
+  const unknownLocations=shops.filter(s=>s.latitude===undefined||s.longitude===undefined).length;
+  const distance=(id:string)=>nearby.find(s=>s.id===id)?.distance;
+  const km=(id:string)=>{const n=distance(id);return n===undefined?'':`${n.toLocaleString('hu-HU',{maximumFractionDigits:1})} km`;};
+
 
   useEffect(() => {
     try { const raw = localStorage.getItem(STORAGE_KEY), saved = restore(raw); if (saved) { setBasket(saved.basket); setShopIds(saved.shopIds); setLoyalty(saved.loyalty); setExtraStopCost(saved.extraStopCost); } else if (raw) setStorageError('A korábbi mentés nem olvasható. Új listát készíthetsz.'); }
     catch { setStorageError('Ebben a böngészőben a lista mentése nem elérhető.'); }
+    try{const loc=JSON.parse(localStorage.getItem('kosarradar:area:v1')||'null');if(loc&&(loc.place===null||validPlace(loc.place))&&Number.isInteger(loc.radius)&&loc.radius>=1&&loc.radius<=100)setArea(loc);}catch{}
     setReady(true);
     return () => calculation.current?.abort();
   }, []);
@@ -41,6 +53,8 @@ export default function Home() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ basket, shopIds, loyalty, extraStopCost })); }
     catch { setStorageError('A lista mentése nem sikerült; az oldal bezárásakor elveszhet.'); }
   }, [ready, basket, shopIds, loyalty, extraStopCost]);
+  useEffect(()=>{if(!ready)return;try{localStorage.setItem('kosarradar:area:v1',JSON.stringify(area));}catch{setStorageError('A helyszín nem menthető ezen az eszközön.');}},[area,ready]);
+  useEffect(()=>{if(!ready||shopsLoading)return;invalidate();setShopIds(filteredShops.map(s=>s.id));},[filteredShops,ready,shopsLoading]);
   useEffect(() => {
     const controller = new AbortController(); setShopsLoading(true); setShopsError('');
     api<{ shops: Shop[]; chains: Chain[]; stale: boolean }>('/api/shops', controller.signal)
@@ -57,17 +71,26 @@ export default function Home() {
 
 
   function invalidate() { revision.current++; calculation.current?.abort(); setComparison(null); setPriceLoading(false); setCompareError(''); }
-  function toggleShop(id: string) { if (!shopIds.includes(id) && shopIds.length >= 8) { setNotice('Legfeljebb 8 üzletet válassz.'); return; } invalidate(); setShopIds(ids => ids.includes(id) ? ids.filter(s => s !== id) : [...ids, id]); }
+  function toggleShop(id: string) { invalidate(); setShopIds(ids => ids.includes(id) ? ids.filter(s => s !== id) : [...ids, id]); }
   function toggleLoyalty(id: string) { invalidate(); setLoyalty(ids => ids.includes(id) ? ids.filter(s => s !== id) : [...ids, id]); }
   async function calculate() {
     calculation.current?.abort(); const controller = new AbortController(); calculation.current = controller;
-    const token = ++revision.current; setPriceLoading(true); setComparison(null); setCompareError('');
+    const token = ++revision.current; setCompletedShops(0); setPriceLoading(true); setComparison(null); setCompareError('');
     try {
-      const data = await api<Comparison>('/api/compare', controller.signal, { items: basket.map(({ code, qty }) => ({ code, qty })), shopIds, loyaltyChainIds: loyalty, extraStopCost });
-      if (!controller.signal.aborted && token === revision.current) setComparison(data);
+      const results: Comparison[]=[];
+      // Keep upstream requests bounded; every selected shop gets a result, not only the first eight.
+      for(let offset=0;offset<shopIds.length;offset+=8){
+        const data=await api<Comparison>('/api/compare',controller.signal,{items:basket.map(({code,qty})=>({code,qty})),shopIds:shopIds.slice(offset,offset+8),loyaltyChainIds:loyalty,extraStopCost});
+        if(controller.signal.aborted||token!==revision.current)return;
+        results.push(data);setCompletedShops(Math.min(offset+8,shopIds.length));
+      }
+      const quotes=results.flatMap(r=>r.quotes),oldest=results.map(r=>r.oldestObservation).filter((v):v is string=>!!v).sort()[0]||null;
+      const data:Comparison={quotes,products:results[0]?.products||[],plans:optimize(basket,selectedShops,quotes,loyalty,extraStopCost),comparedAt:new Date().toISOString(),oldestObservation:oldest,warnings:[...new Set(results.flatMap(r=>r.warnings))]};
+      if(!controller.signal.aborted&&token===revision.current)setComparison(data);
     } catch (e) { if (!controller.signal.aborted && token === revision.current) setCompareError(e instanceof Error ? e.message : 'A számítás nem sikerült.'); }
     finally { if (!controller.signal.aborted && token === revision.current) setPriceLoading(false); }
   }
+  function loadBasket(s:BasketSnapshot){invalidate();setBasketName(s.name);setArea(s.area);setLoyalty(s.loyalty);setExtraStopCost(s.extraStopCost);setOnlyFavorites(false);setChainFilter('');setLoadedLines(s.lines);window.scrollTo({top:0,behavior:'smooth'});}
   const complete = comparison?.plans.filter(p => p.complete) || [];
   const single = complete.find(p => p.shopIds.length === 1), pair = complete.find(p => p.shopIds.length === 2), best = complete[0];
   const labelShop = (id: string) => shops.find(s => s.id === id);
@@ -82,31 +105,45 @@ export default function Home() {
   </article>;
 
   return <main>
-    <header><a className="brand" href="/" aria-label="KosárRadar kezdőlap"><span className="logo">KR</span><b>KosárRadar</b></a><div className="header-actions"><span className="version">Alpha 0.7</span><AccountLink/></div></header>
-    <div className="intro compact-intro"><div><h1>Írd le. Válaszd ki. <span>Számolunk.</span></h1><p>Szabad szöveges bevásárlólista · Auchan és Tesco</p></div></div>
-    {ready ? <FreeTextList initialBasket={basket} onChange={(next, pending) => { invalidate(); setBasket(next); setUnresolved(pending); }} /> : <p role="status">Bevásárlólista betöltése…</p>}
+    <header><a className="brand" href="/" aria-label="KosárRadar kezdőlap"><span className="logo">KR</span><b>KosárRadar</b></a><div className="header-actions"><span className="version">Alpha 0.8</span><AccountLink/></div></header>
+    <div className="intro compact-intro"><div><h1>A te listád. <span>A környéked árai.</span></h1><p>Állítsd össze és mentsd el a kosaradat, majd nézd meg, hol éri meg.</p></div></div>
+    <nav className="journey" aria-label="Bevásárlás lépései"><a href="#basket-builder">1. Kosár összeállítása</a><a href="#save-basket">2. Kosár mentése</a><a href="#stores">3. Üzletek és árak</a></nav>
+    <section className="basket-name" id="basket-builder"><label htmlFor="basket-name">Kosár neve</label><input id="basket-name" maxLength={80} value={basketName} onChange={e=>setBasketName(e.target.value)}/></section>
+    {ready ? <FreeTextList initialBasket={basket} loadedLines={loadedLines} onChange={(next, pending, nextLines) => { invalidate(); setBasket(next); setUnresolved(pending);setLines(nextLines); }} /> : <p role="status">Bevásárlólista betöltése…</p>}
+    <section className="card save-card" id="save-basket"><div className="section-title"><span className="step">2</span><h2>Kosár mentése</h2></div><BasketSaves snapshot={{name:basketName,lines,area,loyalty,extraStopCost}} onLoad={loadBasket}/></section>
     <section className="card basket-summary" aria-label="Kosár számítási állapota">
       <div><strong>{basket.reduce((n,p)=>n+p.qty,0)} kiválasztott csomag · {selectedShops.length} üzlet</strong><p className="hint">{unresolved ? `${unresolved} tétel még kiválasztásra vár. Az eredmény csak részösszeg.` : basket.length ? 'A kiválasztás vagy a beállítások módosításakor automatikusan újraszámolunk.' : 'Válassz konkrét terméket az árak kiszámításához.'}</p></div>
-      {!selectedShops.length ? <a className="button-link" href="#stores">Válassz üzleteket az árakhoz ↓</a> : <button disabled={!basket.length || priceLoading || shopsLoading} onClick={calculate}>{priceLoading ? 'Árak frissítése…' : 'Árak újraellenőrzése'}</button>}
+      {!selectedShops.length ? <a className="button-link" href="#stores">Válassz települést és körzetet ↓</a> : <button disabled={!basket.length || priceLoading || shopsLoading} onClick={calculate}>{priceLoading ? 'Árak frissítése…' : 'Árak újraellenőrzése'}</button>}
       {storageError && <p className="warning" role="alert">{storageError}</p>}
     </section>
     <p className="sr-only" role="status" aria-live="polite">{notice}</p>
-    <section className="card stores" id="stores" aria-labelledby="stores-title"><div className="section-title"><span className="step">2</span><h2 id="stores-title">Melyik üzletek jöhetnek szóba?</h2><span className="muted">{shopIds.length} / 8</span></div>
-      <p className="hint">Auchan és Tesco. Konkrét üzletek árait hasonlítjuk össze. Keress településre, irányítószámra vagy címre.</p>
+    <section className="card stores" id="stores" aria-labelledby="stores-title"><div className="section-title"><span className="step">3</span><h2 id="stores-title">Auchan és Tesco a közeledben</h2><span className="muted">{shopIds.length} üzlet</span></div>
+      <AreaPicker value={area} onChange={next=>{invalidate();setArea(next);setOnlyFavorites(false);setChainFilter('');}}/>
       {shopsLoading && <p role="status">Üzletek betöltése…</p>}
       {shopsError && <div className="error" role="alert">{shopsError} <button onClick={() => setRetryShops(n => n + 1)}>Újrapróbálom</button></div>}
       {shopsStale && <p className="warning">Korábban lekért üzletlista.</p>}
-      {!!shops.length && <><div className="store-controls"><label className="sr-only" htmlFor="town">Település, irányítószám vagy cím</label><input id="town" type="search" value={shopQuery} onChange={e => setShopQuery(e.target.value)} placeholder="Pl. Budapest, 2040 vagy Kossuth utca"/><label className="sr-only" htmlFor="chain">Üzletlánc</label><select id="chain" value={chainFilter} onChange={e => setChainFilter(e.target.value)}><option value="">Minden elérhető lánc</option>{chains.map(c => <option value={c.id} key={c.id}>{c.name}</option>)}</select></div>
-        <div className="favorites-toolbar"><button aria-pressed={onlyFavorites} onClick={()=>setOnlyFavorites(v=>!v)}>★ Kedvenceim ({favorites.filter(id=>shops.some(s=>s.id===id)).length})</button><button disabled={accountBusy||!favorites.some(id=>shops.some(s=>s.id===id))} onClick={()=>{invalidate();const ids=favorites.filter(id=>shops.some(s=>s.id===id));setShopIds(ids.slice(0,8));if(ids.length>8)setNotice('Az első 8 kedvenc üzletet választottuk ki.');}}>Kedvencek kijelölése</button><span>{user?'Kedvencek a fiókodba mentve':'Kedvencek ezen az eszközön · a fiókhoz jelentkezz be'}</span></div>
+      {!!shops.length&&area.place&&<>
+        <div className="store-filters"><strong>{filteredShops.length} üzlet · {area.place.name}, {area.radius} km</strong><label htmlFor="chain">Lánc</label><select id="chain" value={chainFilter} onChange={e=>setChainFilter(e.target.value)}><option value="">Auchan és Tesco</option>{chains.map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select><button aria-pressed={onlyFavorites} onClick={()=>setOnlyFavorites(v=>!v)}>★ Csak kedvenceim</button><button onClick={()=>{invalidate();setShopIds(filteredShops.map(s=>s.id));}}>Mind kijelölése</button></div>
+        <p className="hint">Minden találatot kijelölünk. A pipával kihagyhatsz üzleteket; a csillaggal kedvencet menthetsz.</p>
         {accountError&&<p className="error" role="alert">{accountError}</p>}
-        {!!shopIds.length && <div className="selected-stores">{shopIds.map(id => { const s = labelShop(id); return <button className="chip" key={id} onClick={() => toggleShop(id)} aria-label={`${s?.name || id} ${s?.address || ''} eltávolítása`}>{s ? `${s.name} · ${s.city}, ${s.address}` : 'Már nem elérhető üzlet'} <span>×</span></button>; })}</div>}
-        {(shopQuery.trim() || chainFilter || onlyFavorites) ? <><div className="store-list">{visibleShops.map(s => <div className={'store-option ' + (shopIds.includes(s.id) ? 'selected' : '')} key={s.id}><label className="store-choice"><input type="checkbox" checked={shopIds.includes(s.id)} disabled={!shopIds.includes(s.id) && shopIds.length >= 8} onChange={() => toggleShop(s.id)}/><span><strong>{s.name}</strong><span>{s.postalCode} {s.city}, {s.address}</span></span></label><button className="favorite-toggle" disabled={accountBusy} aria-pressed={favorites.includes(s.id)} aria-label={`${s.name}, ${s.address}: ${favorites.includes(s.id)?'eltávolítás a kedvencekből':'mentés a kedvencek közé'}`} onClick={()=>void saveFavorites(favorites.includes(s.id)?favorites.filter(id=>id!==s.id):[...favorites,s.id])}>{favorites.includes(s.id)?'★':'☆'}</button></div>)}</div>{!filteredShops.length && <p className="empty">Ezen a néven vagy címen nincs találat.</p>}{filteredShops.length > 40 && <p className="hint">Az első 40 üzlet látszik. Pontosítsd a települést vagy a címet.</p>}</> : <p className="store-prompt">Írd be, hol vásárolnál, majd jelöld ki az üzleteket.</p>}
+        {!filteredShops.length&&<p className="empty">Nincs {onlyFavorites?'kedvenc ':''}üzlet ebben a körzetben. Növeld a távolságot vagy módosítsd a szűrőt.</p>}
+        <div className="nearby-store-list">{filteredShops.map(s=>{
+          const plan=comparison&&shopIds.includes(s.id)?optimize(basket,[s],comparison.quotes,loyalty,0)[0]:null;
+          const full=!!plan?.complete&&!unresolved;
+          return <article className={'nearby-store '+(shopIds.includes(s.id)?'selected':'')} key={s.id}>
+            <label className="store-choice"><input type="checkbox" checked={shopIds.includes(s.id)} onChange={()=>toggleShop(s.id)}/><span><strong>{s.name} <small>{km(s.id)}</small></strong><span>{s.postalCode} {s.city}, {s.address}</span></span></label>
+            <div className="store-price">{plan?<><strong>{plan.lines.length?ft.format(plan.total):'Nincs áradat'}</strong><span className={full?'complete-label':'missing'}>{full?'Teljes kosár':`${plan.lines.length} / ${basket.length+unresolved} tétel · részleges`}</span>{plan.lines.length>0&&<small>Visszaváltási díjjal</small>}</>:<span>{!shopIds.includes(s.id)?'Kihagyva':priceLoading?'Árak lekérése…':basket.length?'Összehasonlításra vár':'Válassz terméket az árhoz'}</span>}</div>
+            <button className="favorite-toggle" disabled={accountBusy} aria-pressed={favorites.includes(s.id)} aria-label={`${s.name}, ${s.address}: kedvenc`} onClick={()=>void saveFavorites(favorites.includes(s.id)?favorites.filter(id=>id!==s.id):[...favorites,s.id])}>{favorites.includes(s.id)?'★':'☆'}</button>
+          </article>;
+        })}</div>
       </>}
-      <p className="source-note">Ebben a prototípusban kizárólag az Auchan és Tesco üzletei választhatók.</p>
+      {!area.place&&<p className="empty">Válassz települést a kereső találatai közül. Ezután megjelennek a körzet boltjai.</p>}
+      {unknownLocations>0&&<p className="warning">{unknownLocations} üzletnél hiányzik az ellenőrizhető helyadat; ezeket nem tudjuk távolság szerint besorolni.</p>}
+      <p className="source-note">A GVH Árfigyelőben szereplő Auchan és Tesco üzletek. Az adatforráson kívüli boltok és termékek nem jelennek meg.</p>
       {!!selectedShops.length && <div className="preferences"><fieldset><legend>Melyik láncnál van hűségkártyád?</legend><div className="loyalty">{selectedChains.map(c => <label key={c.id}><input type="checkbox" checked={loyalty.includes(c.id)} onChange={() => toggleLoyalty(c.id)}/>{c.name}</label>)}</div><p className="hint">Csak a megjelölt láncok általános hűségáraival számolunk. Egyéni kuponokat nem vonunk le.</p></fieldset><div><label htmlFor="extra-cost">Második megálló többletköltsége</label><div className="cost-input"><input id="extra-cost" type="number" min="0" max="100000" step="50" value={extraStopCost} onChange={e => { invalidate(); setExtraStopCost(Math.min(100000, Math.max(0, Number(e.target.value) || 0))); }}/><span>Ft</span></div><p className="hint">Saját becslés az extra útra és időre. A 0 Ft azt jelenti, hogy ezeket nem számoljuk.</p></div></div>}
     </section>
-    {(priceLoading || compareError || comparison) && <section className="card comparison" aria-labelledby="compare-title"><div className="section-title"><span className="step">3</span><h2 id="compare-title">{unresolved ? "A kiválasztott tételek részösszege" : "Így alakul a kosarad"}</h2></div>
-      {priceLoading && <p className="empty" role="status">Ellenőrizzük az árakat a kiválasztott üzletekben…</p>}
+    {(priceLoading || compareError || comparison) && <section className="card comparison" aria-labelledby="compare-title"><div className="section-title"><h2 id="compare-title">{unresolved ? "A kiválasztott tételek részösszege" : "Így alakul a kosarad"}</h2></div>
+      {priceLoading && <p className="empty" role="status">Ellenőrizzük az árakat: {completedShops} / {shopIds.length} üzlet…</p>}
       {compareError && <div className="error" role="alert">{compareError} <button onClick={calculate}>Újrapróbálom</button></div>}
       {comparison && <>{unresolved > 0 && <p className="warning"><strong>Ez még nem a teljes bevásárlólista ára.</strong> {unresolved} tételnél konkrét terméket kell választanod.</p>}{comparison.warnings.map(w => <p className="warning" key={w}>{w}</p>)}
         {best ? <><p className="result-summary">{unresolved ? "Az alábbi összegek csak a már kiválasztott tételeket tartalmazzák." : single && pair && pair.total < single.total ? <>Két üzlettel <b>{ft.format(single.total - pair.total)}</b> maradhat nálad az egyboltos megoldáshoz képest.</> : single ? 'A legkedvezőbb teljes kosárhoz elég egy üzlet.' : 'A teljes kosár két üzletből állítható össze.'}</p><div className="plans">{single && renderPlan(single, unresolved ? 'EGY ÜZLET · RÉSZÖSSZEG' : 'EGY ÜZLET')}{pair && renderPlan(pair, unresolved ? 'KÉT ÜZLET · RÉSZÖSSZEG' : 'KÉT ÜZLET')}</div>{!single && <p className="hint">Egyetlen kiválasztott üzletben sincs minden tételhez használható ár.</p>}{!pair && <p className="hint">A második üzlet bevonása nem ad külön, teljes kosaras megoldást.</p>}</> : <div className="warning"><strong>Még nincs teljes kosár.</strong><p>Legalább egy tételhez hiányzik a használható ár, vagy a kosár több mint két üzletet igényel. A részösszegek nem hasonlíthatók egy teljes kosárhoz.</p></div>}
@@ -115,6 +152,6 @@ export default function Home() {
         <p className="hint">Az ár megléte nem jelent készletigazolást. Indulás előtt ellenőrizd az ajánlatot és a kedvezmény feltételeit. Az első üzlethez vezető út költsége nincs benne.</p>
       </>}
     </section>}
-    <footer><span>KosárRadar · Alpha 0.6</span><a href="https://arfigyelo.gvh.hu" target="_blank" rel="noreferrer">Áradatok: GVH Árfigyelő ↗</a></footer>
+    <footer><span>KosárRadar · Alpha 0.8</span><a href="https://arfigyelo.gvh.hu" target="_blank" rel="noreferrer">Áradatok: GVH Árfigyelő ↗</a></footer>
   </main>;
 }
