@@ -1,3 +1,4 @@
+import { cataloguePage, supportedProduct } from '../../../../lib/catalogue.ts';
 import { array, errorResponse, product, record, source, SourceError } from '../../../../lib/gvh.ts';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -10,14 +11,12 @@ export async function GET(request: Request) {
         const detail = await source('/product/' + q);
         const found = product(detail.value);
         if (found.code !== q) throw new SourceError('invalid_response', 'Eltérő termékazonosító érkezett.');
-        return Response.json({ products: [found], count: 1, observedAt: detail.observedAt, stale: detail.stale }, { headers: { 'Cache-Control': 'no-store' } });
+        return Response.json({ products: supportedProduct(detail.value) ? [found] : [], hasMore: false, observedAt: detail.observedAt, stale: detail.stale }, { headers: { 'Cache-Control': 'no-store' } });
       } catch (e) {
-        if (e instanceof SourceError && e.code === 'not_found') return Response.json({ products: [], count: 0, stale: false }, { headers: { 'Cache-Control': 'no-store' } });
+        if (e instanceof SourceError && e.code === 'not_found') return Response.json({ products: [], hasMore: false, stale: false }, { headers: { 'Cache-Control': 'no-store' } });
         throw e;
       }
     }
-    const data = await source('/search?' + new URLSearchParams({ q, limit: '20', offset: String(offset), order: 'relevance' }), 3600_000);
-    const body = record(data.value), products = array(body.products).map(product);
-    return Response.json({ products, count: typeof body.count === 'number' ? body.count : products.length, observedAt: data.observedAt, stale: data.stale }, { headers: { 'Cache-Control': 'no-store' } });
+    return Response.json(await cataloguePage('/search?' + new URLSearchParams({ q, limit: '20', offset: String(offset), order: 'relevance' }),offset), { headers: { 'Cache-Control': 'no-store' } });
   } catch (e) { return errorResponse(e); }
 }
