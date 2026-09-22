@@ -1,28 +1,27 @@
-# KosárRadar Alpha 0.7
+# KosárRadar Alpha 0.9
 
-Új elsődleges munkafelület: szabad szöveges bevásárlólista és mellette kapcsolódó termékjavaslatok. Példa: `Cappy almalé, 2 liter` → egyliteres változat kiválasztása → 2 csomag → automatikus árfrissítés. A még kiválasztásra váró tételek nem számítanak bele, és a felület részösszeget jelez. [Használat és korlátok](docs/ALPHA07_SZOVEGES_LISTA.md).
+Menthető, pontos termékekből álló bevásárlókosár, kedvenc Auchan/Tesco üzletek, üzletenkénti árfigyelés és a teljes utazási költséggel számoló ajánlás.
 
-Kategóriákból összeállítható bevásárlólista, konkrét üzletek árai és egy-/kétüzletes kosár-összehasonlítás.
+## Használható funkciók
 
-## Újdonságok
+- Szabad szöveges lista, konkrét termék és kiszerelés kiválasztásával; név-, kategória- és vonalkódkeresés.
+- Kosarak mentése és visszanyitása. Vendégként az adott böngészőben, konfigurált fiókkal saját felhős rekordokban.
+- Település és 1–100 km légvonalbeli körzet; Auchan/Tesco üzletek, csillagozható kedvencek, minden kijelölt üzlet ára.
+- Helyi árfigyelési listák és régi/új árjelzések. Nyitott, látható appban futnak; bezárt app mellett nem.
+- Jármű, fogyasztás, energiaár, egyéb Ft/km, parkolás és minimummegtakarítás. Kézi úthosszal működő költségkalkulátor.
 
-- Kizárólag Auchan és Tesco: üzletlista, név/vonalkód keresés és kategóriás terméklista is szűrt; más lánc üzletét a szerver visszautasítja.
-- Élő GVH kategóriafa: főcsoport → alcsoport → termékkategória. Megmaradt a név- és vonalkódkeresés.
-- Konkrét üzletek csillagozása, kedvencszűrő, kedvencek gyors kijelölése (legfeljebb 8 összehasonlított üzlet).
-- Fiókoldal: e-mailes regisztráció, belépés, megerősítés, jelszó-visszaállítás, névmódosítás, kijelentkezés. Google és Facebook OAuth integráció.
-- Kedvencek vendégként ezen az eszközön; bejelentkezve a felhasználó saját Supabase rekordjában. A kosár és összehasonlítási beállítások továbbra is eszközönként mentődnek.
+## Aktiválásra vár
 
-## Aktiválási állapot
+Az automatikus közúti útvonalhoz `ORS_API_KEY` kell. A kész számítás minden megengedett 1–3 üzletes útvonalat összevet, legfeljebb 8 kijelölt boltból, hazaúttal együtt.
 
-A katalógus és vendégkedvencek konfiguráció nélkül használhatók. A felhős fiókok a kijelölt Supabase projekt URL-jének, publishable kulcsának és adatbázissémájának beállítása után működnek. A Google/Facebook gomb csak az adott szolgáltató tényleges bekapcsolásakor aktív. A teljes élő bejelentkezési folyamat még nincs hitelesítve. Részletek: [Fiókbeállítás](docs/FIOK_BEALLITAS.md).
+A háttérfigyelés workerje, értesítési API-ja, adatbázissémája és napi production ütemezése elkészült, de **nincs aktiválva**. A meglévő Supabase projekt 2026-09-22-én inaktív, az új SQL nincs alkalmazva; a Vercel projektbeállításaihoz a connector nem fér hozzá. Push/e-mail nincs. A meglévő AI-értelmezés is opcionális, konfigurált szerveroldali kulcsot igényel.
+
+[Részletes működés, korlátok és aktiválás](docs/ALPHA09_ARFIGYELES_ES_UT.md) · [Kosár és körzet](docs/ALPHA08_KOSAR_ES_KORZET.md) · [Fiókbeállítás](docs/FIOK_BEALLITAS.md)
 
 ## Futtatás
 
-Node >=22.18.0, `npm ci`, `npm run dev`. Környezeti minta: `.env.example`.
-Ellenőrzés: `npm test`, `npm run typecheck`, `npm run build`.
+Node >=22.18.0. `npm ci`, majd `npm run dev`. Környezeti minta: `.env.example`. Ellenőrzés: `npm test`, `npm run typecheck`, `npm run build`.
 
-## Árak és korlátok
+## Árforrás és számítás
 
-Árforrás: GVH Árfigyelő. Pontos termékazonosító és kiszerelés; hűségár csak a megjelölt láncnál; visszaváltási díj külön. Legfeljebb 24 tétel és 8 üzlet; az optimalizálás egy vagy két üzletet vizsgál. A kimért termékek még nem számolhatók. Hiányos vagy elavult ár nem ad teljes kosaras ajánlatot. Az ár megléte nem készletigazolás. Egyéni kuponok nincsenek levonva.
-
-A lapozás a GVH 20 soros forrásoldalait követi, a két láncra szűrés után kevesebb találat maradhat egy oldalon. Az alkalmazás nem tünteti fel az összes lánc összesített találatszámát sajátjaként.
+GVH Árfigyelő: pontos termékazonosító, kiszerelés, üzletenkénti ár, opt-in hűségár és visszaváltási díj. Legfeljebb 24 termék. Árlekérés nyolcas üzletcsoportokban; az árlistához több üzlet is kijelölhető. Az útiköltség nélküli nézet 1–2 boltot, a konfigurált útvonaltervező 1–3 boltot vizsgál. Kimért termék, egyéni kupon és készletigazolás nem támogatott. Hiányzó vagy elavult ár nem válik ingyenes vagy teljes kosárrá.

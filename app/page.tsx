@@ -10,6 +10,9 @@ import { nearbyShops, validPlace, type Area } from '../lib/location';
 import type { ShoppingLine } from '../lib/shopping-text';
 import type { BasketSnapshot } from '../lib/saved-baskets';
 import { AccountLink,useAccount } from '../components/account-provider';
+import {TravelPlanner} from '../components/travel-planner';
+import {PriceWatches} from '../components/price-watches';
+import {DEFAULT_TRAVEL,travelInput,type TravelSettings} from '../lib/travel';
 
 const ft = new Intl.NumberFormat('hu-HU', { style: 'currency', currency: 'HUF', maximumFractionDigits: 2 });
 const stamp = (s: string) => new Date(s).toLocaleString('hu-HU', { timeZone: 'Europe/Budapest', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -24,6 +27,7 @@ async function api<T>(url: string, signal: AbortSignal, body?: unknown): Promise
 export default function Home() {
   const {user,favorites,busy:accountBusy,error:accountError,save:saveFavorites}=useAccount();
   const [area,setArea]=useState<Area>({place:null,radius:20}),[basketName,setBasketName]=useState('Heti bevásárlás'),[lines,setLines]=useState<ShoppingLine[]>([]),[loadedLines,setLoadedLines]=useState<ShoppingLine[]|undefined>();
+  const [travel,setTravel]=useState<TravelSettings>(DEFAULT_TRAVEL);
   const [completedShops,setCompletedShops]=useState(0);
   const [onlyFavorites,setOnlyFavorites]=useState(false),[unresolved,setUnresolved]=useState(0);
   const [basket, setBasket] = useState<BasketItem[]>([]), [shops, setShops] = useState<Shop[]>([]), [chains, setChains] = useState<Chain[]>([]);
@@ -42,12 +46,14 @@ export default function Home() {
 
 
   useEffect(() => {
-    try { const raw = localStorage.getItem(STORAGE_KEY), saved = restore(raw); if (saved) { setBasket(saved.basket); setShopIds(saved.shopIds); setLoyalty(saved.loyalty); setExtraStopCost(saved.extraStopCost); } else if (raw) setStorageError('A korábbi mentés nem olvasható. Új listát készíthetsz.'); }
+    try { const raw = localStorage.getItem(STORAGE_KEY), saved = restore(raw); if (saved) { setBasket(saved.basket); setShopIds(saved.shopIds); setLoyalty(saved.loyalty); setExtraStopCost(0); } else if (raw) setStorageError('A korábbi mentés nem olvasható. Új listát készíthetsz.'); }
     catch { setStorageError('Ebben a böngészőben a lista mentése nem elérhető.'); }
     try{const loc=JSON.parse(localStorage.getItem('kosarradar:area:v1')||'null');if(loc&&(loc.place===null||validPlace(loc.place))&&Number.isInteger(loc.radius)&&loc.radius>=1&&loc.radius<=100)setArea(loc);}catch{}
+    try{const t=travelInput(JSON.parse(localStorage.getItem('kosarradar:travel:v1')||'null'));if(t)setTravel(t);}catch{}
     setReady(true);
     return () => calculation.current?.abort();
   }, []);
+  useEffect(()=>{if(!ready)return;try{localStorage.setItem('kosarradar:travel:v1',JSON.stringify(travel));}catch{setStorageError('A járműbeállítás nem menthető.');}},[ready,travel]);
   useEffect(() => {
     if (!ready) return;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ basket, shopIds, loyalty, extraStopCost })); }
@@ -90,27 +96,27 @@ export default function Home() {
     } catch (e) { if (!controller.signal.aborted && token === revision.current) setCompareError(e instanceof Error ? e.message : 'A számítás nem sikerült.'); }
     finally { if (!controller.signal.aborted && token === revision.current) setPriceLoading(false); }
   }
-  function loadBasket(s:BasketSnapshot){invalidate();setBasketName(s.name);setArea(s.area);setLoyalty(s.loyalty);setExtraStopCost(s.extraStopCost);setOnlyFavorites(false);setChainFilter('');setLoadedLines(s.lines);window.scrollTo({top:0,behavior:'smooth'});}
+  function loadBasket(s:BasketSnapshot){invalidate();setBasketName(s.name);setArea(s.area);setLoyalty(s.loyalty);setExtraStopCost(0);setTravel(s.travel||DEFAULT_TRAVEL);setOnlyFavorites(false);setChainFilter('');setLoadedLines(s.lines);window.scrollTo({top:0,behavior:'smooth'});}
   const complete = comparison?.plans.filter(p => p.complete) || [];
   const single = complete.find(p => p.shopIds.length === 1), pair = complete.find(p => p.shopIds.length === 2), best = complete[0];
   const labelShop = (id: string) => shops.find(s => s.id === id);
   const productName = (id: string) => basket.find(p => p.code === id)?.name || id;
   const renderPlan = (p: Plan, title: string) => <article className={'plan ' + (p === best ? 'best' : '')} key={p.id}>
-    <div className="eyebrow">{title}{p === best && <span className="badge">Kedvezőbb választás</span>}</div>
+    <div className="eyebrow">{title}{p === best && <span className="badge">Kedvezőbb kosárár</span>}</div>
     <h3>{p.shopIds.map(id => labelShop(id)?.name).join(' + ')}</h3>
     {p.shopIds.map(id => { const s = labelShop(id); return <p className="muted address" key={id}>{s?.city}, {s?.address}</p>; })}
     <div className="plan-total">{ft.format(p.total)}</div>
-    <dl><div><dt>Termékek</dt><dd>{ft.format(p.subtotal)}</dd></div><div><dt>Visszaváltási díj</dt><dd>{ft.format(p.deposits)}</dd></div><div><dt>Második megálló</dt><dd>{ft.format(p.travel)}</dd></div></dl>
+    <dl><div><dt>Termékek</dt><dd>{ft.format(p.subtotal)}</dd></div><div><dt>Visszaváltási díj</dt><dd>{ft.format(p.deposits)}</dd></div></dl>
     <details><summary>Tételes bevásárlólista</summary>{p.lines.map(l => <div className="allocation" key={l.code}><strong>{productName(l.code)}</strong><span>{l.qty} csomag × {ft.format(l.unitPrice)} · {labelShop(l.shopId)?.name}{l.priceKind === 'LOYALTY' ? ' · hűségárral' : l.priceKind === 'DISCOUNTED' ? ' · akciós árral' : ''}</span><b>{ft.format(l.total)}</b></div>)}</details>
   </article>;
 
   return <main>
-    <header><a className="brand" href="/" aria-label="KosárRadar kezdőlap"><span className="logo">KR</span><b>KosárRadar</b></a><div className="header-actions"><span className="version">Alpha 0.8</span><AccountLink/></div></header>
-    <div className="intro compact-intro"><div><h1>A te listád. <span>A környéked árai.</span></h1><p>Állítsd össze és mentsd el a kosaradat, majd nézd meg, hol éri meg.</p></div></div>
-    <nav className="journey" aria-label="Bevásárlás lépései"><a href="#basket-builder">1. Kosár összeállítása</a><a href="#save-basket">2. Kosár mentése</a><a href="#stores">3. Üzletek és árak</a></nav>
+    <header><a className="brand" href="/" aria-label="KosárRadar kezdőlap"><span className="logo">KR</span><b>KosárRadar</b></a><div className="header-actions"><span className="version">Alpha 0.9</span><AccountLink/></div></header>
+    <div className="intro compact-intro"><div><h1>A kosarad. <span>A legjobb bevásárlási terved.</span></h1><p>Pontos termékek, kedvenc üzletek, árfigyelés — és az útiköltséggel együtt számoló ajánlás.</p></div></div>
+    <nav className="journey" aria-label="Bevásárlás lépései"><a href="#basket-builder">1. Kosár összeállítása</a><a href="#save-basket">2. Kosár mentése</a><a href="#stores">3. Üzletek és árak</a><a href="#travel">4. Út és ajánlás</a><a href="#price-alerts">5. Árfigyelés</a></nav>
     <section className="basket-name" id="basket-builder"><label htmlFor="basket-name">Kosár neve</label><input id="basket-name" maxLength={80} value={basketName} onChange={e=>setBasketName(e.target.value)}/></section>
     {ready ? <FreeTextList initialBasket={basket} loadedLines={loadedLines} onChange={(next, pending, nextLines) => { invalidate(); setBasket(next); setUnresolved(pending);setLines(nextLines); }} /> : <p role="status">Bevásárlólista betöltése…</p>}
-    <section className="card save-card" id="save-basket"><div className="section-title"><span className="step">2</span><h2>Kosár mentése</h2></div><BasketSaves snapshot={{name:basketName,lines,area,loyalty,extraStopCost}} onLoad={loadBasket}/></section>
+    <section className="card save-card" id="save-basket"><div className="section-title"><span className="step">2</span><h2>Kosár mentése</h2></div><BasketSaves snapshot={{name:basketName,lines,area,loyalty,extraStopCost,travel}} onLoad={loadBasket}/></section>
     <section className="card basket-summary" aria-label="Kosár számítási állapota">
       <div><strong>{basket.reduce((n,p)=>n+p.qty,0)} kiválasztott csomag · {selectedShops.length} üzlet</strong><p className="hint">{unresolved ? `${unresolved} tétel még kiválasztásra vár. Az eredmény csak részösszeg.` : basket.length ? 'A kiválasztás vagy a beállítások módosításakor automatikusan újraszámolunk.' : 'Válassz konkrét terméket az árak kiszámításához.'}</p></div>
       {!selectedShops.length ? <a className="button-link" href="#stores">Válassz települést és körzetet ↓</a> : <button disabled={!basket.length || priceLoading || shopsLoading} onClick={calculate}>{priceLoading ? 'Árak frissítése…' : 'Árak újraellenőrzése'}</button>}
@@ -140,18 +146,20 @@ export default function Home() {
       {!area.place&&<p className="empty">Válassz települést a kereső találatai közül. Ezután megjelennek a körzet boltjai.</p>}
       {unknownLocations>0&&<p className="warning">{unknownLocations} üzletnél hiányzik az ellenőrizhető helyadat; ezeket nem tudjuk távolság szerint besorolni.</p>}
       <p className="source-note">A GVH Árfigyelőben szereplő Auchan és Tesco üzletek. Az adatforráson kívüli boltok és termékek nem jelennek meg.</p>
-      {!!selectedShops.length && <div className="preferences"><fieldset><legend>Melyik láncnál van hűségkártyád?</legend><div className="loyalty">{selectedChains.map(c => <label key={c.id}><input type="checkbox" checked={loyalty.includes(c.id)} onChange={() => toggleLoyalty(c.id)}/>{c.name}</label>)}</div><p className="hint">Csak a megjelölt láncok általános hűségáraival számolunk. Egyéni kuponokat nem vonunk le.</p></fieldset><div><label htmlFor="extra-cost">Második megálló többletköltsége</label><div className="cost-input"><input id="extra-cost" type="number" min="0" max="100000" step="50" value={extraStopCost} onChange={e => { invalidate(); setExtraStopCost(Math.min(100000, Math.max(0, Number(e.target.value) || 0))); }}/><span>Ft</span></div><p className="hint">Saját becslés az extra útra és időre. A 0 Ft azt jelenti, hogy ezeket nem számoljuk.</p></div></div>}
+      {!!selectedShops.length && <div className="preferences"><fieldset><legend>Melyik láncnál van hűségkártyád?</legend><div className="loyalty">{selectedChains.map(c => <label key={c.id}><input type="checkbox" checked={loyalty.includes(c.id)} onChange={() => toggleLoyalty(c.id)}/>{c.name}</label>)}</div><p className="hint">Csak a megjelölt láncok általános hűségáraival számolunk. Egyéni kuponokat nem vonunk le.</p></fieldset></div>}
     </section>
-    {(priceLoading || compareError || comparison) && <section className="card comparison" aria-labelledby="compare-title"><div className="section-title"><h2 id="compare-title">{unresolved ? "A kiválasztott tételek részösszege" : "Így alakul a kosarad"}</h2></div>
+    {(priceLoading || compareError || comparison) && <section className="card comparison" aria-labelledby="compare-title"><div className="section-title"><h2 id="compare-title">{unresolved ? "A kiválasztott tételek részösszege" : "Kosárárak útiköltség nélkül"}</h2></div>
       {priceLoading && <p className="empty" role="status">Ellenőrizzük az árakat: {completedShops} / {shopIds.length} üzlet…</p>}
       {compareError && <div className="error" role="alert">{compareError} <button onClick={calculate}>Újrapróbálom</button></div>}
       {comparison && <>{unresolved > 0 && <p className="warning"><strong>Ez még nem a teljes bevásárlólista ára.</strong> {unresolved} tételnél konkrét terméket kell választanod.</p>}{comparison.warnings.map(w => <p className="warning" key={w}>{w}</p>)}
-        {best ? <><p className="result-summary">{unresolved ? "Az alábbi összegek csak a már kiválasztott tételeket tartalmazzák." : single && pair && pair.total < single.total ? <>Két üzlettel <b>{ft.format(single.total - pair.total)}</b> maradhat nálad az egyboltos megoldáshoz képest.</> : single ? 'A legkedvezőbb teljes kosárhoz elég egy üzlet.' : 'A teljes kosár két üzletből állítható össze.'}</p><div className="plans">{single && renderPlan(single, unresolved ? 'EGY ÜZLET · RÉSZÖSSZEG' : 'EGY ÜZLET')}{pair && renderPlan(pair, unresolved ? 'KÉT ÜZLET · RÉSZÖSSZEG' : 'KÉT ÜZLET')}</div>{!single && <p className="hint">Egyetlen kiválasztott üzletben sincs minden tételhez használható ár.</p>}{!pair && <p className="hint">A második üzlet bevonása nem ad külön, teljes kosaras megoldást.</p>}</> : <div className="warning"><strong>Még nincs teljes kosár.</strong><p>Legalább egy tételhez hiányzik a használható ár, vagy a kosár több mint két üzletet igényel. A részösszegek nem hasonlíthatók egy teljes kosárhoz.</p></div>}
+        {best ? <><p className="result-summary">{unresolved ? "Az alábbi összegek csak a már kiválasztott tételeket tartalmazzák." : single && pair && pair.total < single.total ? <>Csak a termékárakkal számolva két üzlettel <b>{ft.format(single.total - pair.total)}</b> maradhat nálad az egyboltos megoldáshoz képest.</> : single ? 'A termékárak alapján a legkedvezőbb teljes kosár egy üzletben van.' : 'A teljes kosár két üzletből állítható össze.'}</p><div className="plans">{single && renderPlan(single, unresolved ? 'EGY ÜZLET · RÉSZÖSSZEG' : 'EGY ÜZLET')}{pair && renderPlan(pair, unresolved ? 'KÉT ÜZLET · RÉSZÖSSZEG' : 'KÉT ÜZLET')}</div>{!single && <p className="hint">Egyetlen kiválasztott üzletben sincs minden tételhez használható ár.</p>}{!pair && <p className="hint">A második üzlet bevonása nem ad külön, teljes kosaras megoldást.</p>}</> : <div className="warning"><strong>Még nincs teljes kosár.</strong><p>Legalább egy tételhez hiányzik a használható ár, vagy a kosár több mint két üzletet igényel. A részösszegek nem hasonlíthatók egy teljes kosárhoz.</p></div>}
         <details className="coverage" open={!best}><summary>Árak és hiányzó tételek üzletenként</summary><div className="table-scroll"><table><thead><tr><th>Termék / csomag</th>{selectedShops.map(s => <th key={s.id}>{s.name}<small>{s.city}, {s.address}</small></th>)}</tr></thead><tbody>{basket.map(p => <tr key={p.code}><th>{p.name}<small>{p.qty} db · {size(p)}</small></th>{selectedShops.map(s => { const quote = comparison.quotes.find(v => v.code === p.code && v.shopId === s.id), price = quote && eligiblePrice(quote.prices, loyalty.includes(s.chainId)); const reason = quote?.status === 'error' ? 'Lekérési hiba' : quote?.status === 'stale' ? 'Elavult ár' : quote?.status === 'unsupported' ? 'Nem számolható' : quote?.status === 'ok' && !price ? 'Nincs jogosult ár' : 'Nincs áradat'; return <td key={s.id}>{quote?.status === 'ok' && price ? <><b>{ft.format(price.amount)}</b>{price.type === 'LOYALTY' && <small>Hűségár</small>}{price.type === 'DISCOUNTED' && <small>Akciós ár</small>}{quote.returnFee > 0 && <small>+ {ft.format(quote.returnFee)} visszaváltási díj</small>}</> : <span className="missing">{reason}</span>}</td>; })}</tr>)}</tbody></table></div></details>
         <p className="source-note">Forrás: <a href="https://arfigyelo.gvh.hu" target="_blank" rel="noreferrer">GVH Árfigyelő</a>. {comparison.oldestObservation && <>A felhasznált lekérések közül a legrégebbi: {stamp(comparison.oldestObservation)} (budapesti idő).</>} Ez a lekérés ideje, nem a bolti ár módosításának időpontja.</p>
-        <p className="hint">Az ár megléte nem jelent készletigazolást. Indulás előtt ellenőrizd az ajánlatot és a kedvezmény feltételeit. Az első üzlethez vezető út költsége nincs benne.</p>
+        <p className="hint">Az ár megléte nem jelent készletigazolást. Indulás előtt ellenőrizd az ajánlatot és a kedvezmény feltételeit. Az útiköltséggel együtt számoló ajánlást a következő szakaszban találod.</p>
       </>}
     </section>}
-    <footer><span>KosárRadar · Alpha 0.8</span><a href="https://arfigyelo.gvh.hu" target="_blank" rel="noreferrer">Áradatok: GVH Árfigyelő ↗</a></footer>
+    <TravelPlanner basket={basket} shops={selectedShops} comparison={comparison} loyalty={loyalty} area={area} settings={travel} onChange={setTravel} unresolved={unresolved}/>
+    <PriceWatches name={basketName} basket={basket} shops={shops} selectedIds={shopIds} loyalty={loyalty} unresolved={unresolved} onRefresh={()=>void calculate()}/>
+    <footer><span>KosárRadar · Alpha 0.9</span><a href="https://arfigyelo.gvh.hu" target="_blank" rel="noreferrer">Áradatok: GVH Árfigyelő ↗</a></footer>
   </main>;
 }
